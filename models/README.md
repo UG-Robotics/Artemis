@@ -5,5 +5,10 @@
 <h2> Mechanical Design And Sizing</h2><br>
 <p> The design of Team Artemis's robot was guided by two main objectives: compactness and component protection. The robot of sizewas built with a small footprint to improve maneuverability and reduce the likelihood of collisions during operation.</p>
 <p>In addition, the majority of the electronic components were positioned within the robot's structure rather than being exposed externally. This approach helps protect sensitive components, reduces the risk of accidental damage or tampering, and contributes to a cleaner and more organized design. The compact arrangement of components also improves weight distribution and overall stability during movement.</p><br>
-Figures 1–3 show the completed robot from different perspectives. 
+Figures 1–3 show the completed robot from different perspectives.<br>
+<h4> ISOMETRIC VIEW </h4>
+<p align="center">
+  <img src="images/isometric.png<img width="596" height="389" alt="ARTEMIS" src="https://github.com/user-attachments/assets/f2ad09d1-f245-4259-b8fd-4e97f154bd7f" />
+" width="400">
+</p>
 
