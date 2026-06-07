@@ -8,7 +8,6 @@
 Figures 1–3 show the completed robot from different perspectives.<br>
 <h4> ISOMETRIC VIEW </h4>
 <p align="center">
-  <img src="images/isometric.png<img width="596" height="389" alt="ARTEMIS" src="https://github.com/user-attachments/assets/f2ad09d1-f245-4259-b8fd-4e97f154bd7f" />
-" width="400">
+<img width="1191" height="778" alt="Isometric" src="https://github.com/user-attachments/assets/be3c25d9-5065-48c6-8190-f8b5faf5acaf" />
 </p>
 
