@@ -38,7 +38,12 @@ See the figures below to view iterations made.<br>
  <img width="353" height="200" alt="first" src="https://github.com/user-attachments/assets/10d61965-bf15-4e79-865b-48f4ca92aa18"
   />➡️➡️
  <img width="353" height="200" alt="final" src="https://github.com/user-attachments/assets/8fa4f160-aa62-4e27-ad81-3dd9c0513495" />
-</div>
+</div><br>
+<h4>Cut-outs made to ensure proper ventilation.</h4><br>
+<img width="421" height="362" alt="cut_out" src="https://github.com/user-attachments/assets/c2faa51b-fa28-4f83-ad78-6b606154c555" />
+
+
+
 
 
 
