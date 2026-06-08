@@ -13,7 +13,18 @@ Figures 1&2 show the completed robot from different perspectives.<br>
 <h4> ORTHOGRAPHIC VIEWS </h4>
 <P><img width="714" height="417" alt="FOUR SIDE" src="https://github.com/user-attachments/assets/0fa2cfac-3aa2-4138-8db0-d97fbfe9e14b" />
 </P><br>
-<h2>🔧STEERING MECHANISM </h2>
+<h2>🔧STEERING MECHANISM </h2><br>
+<p>
+The robot uses a steering system based on Ackermann steering geometry, allowing the inner wheel to turn at a greater angle than the outer wheel during cornering. This reduces wheel slip and improves turning accuracy. Steering is actuated by a servo motor, with the servo horn directly connected to the steering linkage to control the front wheels.<br>
+The simulations and steering analysis graph used to validate the design are shown below.
+</p><br>
+<img width="737" height="536" alt="TEST" src="https://github.com/user-attachments/assets/3ec526db-7bef-41e5-b09d-fc89b952c792" />
+<br>
+https://github.com/user-attachments/assets/2cb1c8b4-25f4-4e00-9db0-9a84759839ec
+
+
+
+
 
 
 
