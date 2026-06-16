@@ -1,15 +1,19 @@
-"""
-WRO 2026 Future Engineers - Autonomous Controller
-Implements the state machine, PD wall following, pillar avoidance,
-three-point turn, and parking maneuver.
+"""Autonomous controller for the WRO 2026 Future Engineers vehicle.
 
-This is the code that most closely mirrors what runs on the real robot.
+Implements the state machine, PD wall following, pillar avoidance, three-point
+turn, and parking maneuver. This is the shared brain: the sim and the real robot
+both drive it through the same update() call.
+
+Heads up for the hardware port: update() currently reads sim-only state — exact
+pose (robot.x/y/angle) and track map queries (track.*). See robot/main.py for how
+we'll cover those on the real robot.
 """
 
 import math
 from enum import Enum, auto
 from typing import Optional
-from config import *
+
+from core.config import *
 
 
 def _angle_diff(a, b):
@@ -53,9 +57,7 @@ class ParkingPhase(Enum):
 
 
 class Controller:
-    """
-    Autonomous driving controller for WRO Future Engineers.
-    """
+    """Autonomous driving controller for WRO Future Engineers."""
 
     def __init__(self, driving_direction: int = 1, start_in_parking: bool = True,
                  challenge_type: str = 'obstacle'):
@@ -118,14 +120,13 @@ class Controller:
         self.track_width = TRACK_WIDTH_OBSTACLE
 
     def update(self, sensors, robot, track, dt: float):
-        """
-        Main control loop. Called at CONTROL_HZ rate.
-        
+        """Main control loop, called at CONTROL_HZ rate.
+
         Args:
-            sensors: SensorReading from robot
-            robot: Robot instance
-            track: Track instance
-            dt: Time step in seconds
+            sensors: SensorReading from the robot.
+            robot: Robot instance (or hardware adapter).
+            track: Track instance (or world-model adapter).
+            dt: Time step in seconds.
         """
         self._corner_line_detected = False
         self.elapsed_time += dt
@@ -186,8 +187,8 @@ class Controller:
             self.sections_in_current_lap += 1
             self.line_cooldown = 15
 
-            # Corner entry detection: only trigger on the "entry" color
-            # CW: orange = entering corner, CCW: blue = entering corner
+            # Corner entry detection: only trigger on the "entry" color.
+            # CW: orange = entering corner, CCW: blue = entering corner.
             corner_entry_color = 'orange' if self.driving_direction == 1 else 'blue'
             if sensors.color_detected == corner_entry_color:
                 self._corner_line_detected = True
@@ -354,7 +355,7 @@ class Controller:
             self.avoiding_pillar = None
             return
 
-        # Simple approach: steer a fixed offset in the avoidance direction
+        # Simple approach: steer a fixed offset in the avoidance direction.
         # avoidance_side: -1 = steer left (red pillar, pass right)
         #                 +1 = steer right (green pillar, pass left)
         steer_amount = self.avoidance_side * 14  # Moderate steering angle
@@ -390,15 +391,15 @@ class Controller:
                 self.avoiding_pillar = None
 
     def _handle_corner_turn(self, sensors, robot, track):
-        """Navigate a 90° corner using bicycle model with dynamic radius.
+        """Navigate a 90° corner using a bicycle model with dynamic radius.
 
         At corner entry, the turn radius is set based on the distance to the
-        inner wall (measured by the ToF sensor on the turn side).  This keeps
+        inner wall (measured by the ToF sensor on the turn side). This keeps
         the exit position away from the inner wall even when pillar avoidance
         shifted the robot off-center before the corner.
 
-        Steering angle: δ = atan(wheelbase / R)
-        IMU tracks heading change; exit when turned ≥ CORNER_MIN_EXIT_ANGLE.
+        Steering angle: delta = atan(wheelbase / R). The IMU tracks heading
+        change; we exit when turned >= CORNER_MIN_EXIT_ANGLE.
         """
         # Slow down more for narrow corners to reduce angular overshoot
         if self._is_open:
@@ -412,9 +413,9 @@ class Controller:
             self._corner_entry_heading = sensors.imu_heading
             self._corner_entry_distance = robot.distance_traveled
 
-            # Dynamic radius: distance from robot center to inner wall
-            # CW right turns → inner wall is to the right (tof_right)
-            # CCW left turns → inner wall is to the left (tof_left)
+            # Dynamic radius: distance from robot center to inner wall.
+            # CW right turns → inner wall is to the right (tof_right).
+            # CCW left turns → inner wall is to the left (tof_left).
             if turn_sign == 1:
                 inner_dist = sensors.tof_right + ROBOT_WIDTH / 2
             else:
@@ -520,11 +521,11 @@ class Controller:
         steering = error * KP_WALL * 0.5 + derivative * KD_WALL * 0.5
         robot.set_steering(steering)
 
-        # Check if we're in the parking section
-        # Use ToF sensors to detect the gap created by parking markers
+        # Check if we're in the parking section.
+        # Use ToF sensors to detect the gap created by parking markers.
         pl = track.parking_lot
 
-        dist_to_parking = math.sqrt((robot.x - (pl.x + pl.width/2))**2 + 
+        dist_to_parking = math.sqrt((robot.x - (pl.x + pl.width/2))**2 +
                                      (robot.y - (pl.y + pl.length/2))**2)
 
         if dist_to_parking < 400:

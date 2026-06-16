@@ -1,31 +1,46 @@
-Control Software
-====
+# Control Software
 
-This directory contains the control software for Team Artemis's WRO 2026 Future Engineers vehicle.
+Control software for Team Artemis's WRO 2026 Future Engineers vehicle.
+
+The control logic is shared between simulation and the real robot: a single
+`core` package holds the "brain" (state machine, PD control, tuned constants),
+and both the simulator and the physical robot supply their own sensors and
+actuators behind the same interface.
 
 ## Structure
 
 ```
 src/
-├── README.md                      # This file
-├── open-challenge-sim/            # Open challenge simulation & testing
-│   ├── config.py                  # Simulation constants and PD gains
-│   ├── controller.py              # State machine and control logic
-│   ├── robot.py                   # Robot model and sensor simulation
-│   ├── track.py                   # Track layout and collision detection
-│   ├── sim_viewer.py              # Real-time Pygame visualizer
-│   ├── test_pd_tuning.py          # 108-config test suite
-│   └── test_headless.py           # Headless integration test
-├── obstacle-sim/                  # Obstacle challenge simulation (planned)
-└── robot/                         # Physical robot control code (planned)
+├── core/                       # Shared, hardware-independent control brain
+│   ├── config.py               # Physics, control, sensor and scoring constants
+│   ├── controller.py           # State machine and control logic
+│   └── sensors.py              # SensorReading — the perception→control contract
+├── sim/
+│   ├── open-challenge-sim/     # Open challenge simulation & test suite
+│   └── obstacle-challenge-sim/ # Obstacle challenge simulation (planned)
+└── robot/                      # Physical robot control (Raspberry Pi) — scaffold
 ```
 
-## Open Challenge Simulation
+`core` is imported by both `sim` and `robot`, so tuning validated in simulation
+carries directly to the real vehicle.
 
-See [open-challenge-sim/README.md](open-challenge-sim/README.md) for full documentation.
+## Open challenge simulation
+
+A 2D Pygame model of the track, robot, and sensors used to develop and validate
+the controller. See [sim/open-challenge-sim/README.md](sim/open-challenge-sim/README.md).
 
 ```bash
-cd open-challenge-sim
+cd sim/open-challenge-sim
 python sim_viewer.py        # real-time visualizer
-python test_pd_tuning.py    # run test suite
+python test_pd_tuning.py    # PD/navigation test suite
+python test_headless.py     # headless integration test
 ```
+
+The entry-point scripts add `src/` to the path so `import core...` resolves when
+run directly from their folder.
+
+## Robot
+
+Physical-vehicle code that reuses `core` and adds hardware drivers behind a
+hardware-abstraction layer. Currently a scaffold — see
+[robot/README.md](robot/README.md) for the layout and the remaining porting work.

@@ -4,13 +4,20 @@ Runs the simulation without graphics for testing and batch evaluation.
 Usage: python test_headless.py
 """
 
+import os
 import sys
 import math
 import time
-from config import *
+
+# Make the shared `core` package importable when running this file directly.
+# Append (not insert) so this folder's local modules (robot, track) keep
+# precedence over the same-named src/robot package.
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from core.config import *
+from core.controller import Controller, State
 from track import Track
 from robot import Robot
-from controller import Controller, State
 
 
 def run_simulation(challenge_type='obstacle', max_time=ROUND_TIME, verbose=True,

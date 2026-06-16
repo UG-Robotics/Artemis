@@ -5,21 +5,10 @@ Simulates the physical robot with Ackermann steering, 4 ToF sensors, IMU, and co
 
 import math
 import random
-from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
-from config import *
 
-
-@dataclass
-class SensorReading:
-    """Container for all sensor readings at a given timestamp."""
-    tof_front: float = TOF_MAX_RANGE
-    tof_rear: float = TOF_MAX_RANGE
-    tof_left: float = TOF_MAX_RANGE
-    tof_right: float = TOF_MAX_RANGE
-    imu_heading: float = 0.0
-    color_detected: Optional[str] = None  # 'orange', 'blue', or None
-    pillars_visible: List[dict] = field(default_factory=list)  # [{color, angle, distance, x, y}]
+from core.config import *
+from core.sensors import SensorReading
 
 
 class Robot:

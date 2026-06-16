@@ -9,11 +9,18 @@ Phase 3: Full 48-case verification (via test_headless.py --open)
 """
 
 import math
+import os
 import sys
-from config import *
+
+# Make the shared `core` package importable when running this file directly.
+# Append (not insert) so this folder's local modules (robot, track) keep
+# precedence over the same-named src/robot package.
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from core.config import *
+from core.controller import Controller, State, _angle_diff
 from track import Track
 from robot import Robot
-from controller import Controller, State, _angle_diff
 
 
 # Scoring: each test case awards points based on pass/fail
