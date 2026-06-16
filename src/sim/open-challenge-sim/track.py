@@ -7,7 +7,8 @@ import random
 import math
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
-from config import *
+
+from core.config import *
 
 
 @dataclass

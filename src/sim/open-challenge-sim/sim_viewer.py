@@ -21,13 +21,19 @@ import sys
 import math
 import os
 import time
+
+# Make the shared `core` package importable when running this file directly.
+# Append (not insert) so this folder's local modules (robot, track) keep
+# precedence over the same-named src/robot package.
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 import pygame
-from config import *
+from core.config import *
+from core.controller import Controller, State
 from track import Track
 from robot import Robot
-from controller import Controller, State
 
-# ─── Display constants ───────────────────────────────────────────────────────
+# Display constants
 TRACK_AREA_PX = 800
 PANEL_WIDTH = 280
 WINDOW_W = TRACK_AREA_PX + PANEL_WIDTH
@@ -36,7 +42,7 @@ SCALE = TRACK_AREA_PX / MAT_SIZE  # px per mm
 
 FPS = 60
 
-# ─── Colors (dark theme) ─────────────────────────────────────────────────────
+# Colors (dark theme)
 BG_DARK = (18, 18, 24)
 BG_PANEL = (28, 28, 38)
 PANEL_BORDER = (50, 50, 65)
