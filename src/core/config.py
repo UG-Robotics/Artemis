@@ -59,7 +59,7 @@ ROBOT_MAX_WEIGHT = 1500    # 1.5kg in grams
 WHEELBASE = 76             # Distance between front and rear axles (mm, CAD: 7.6cm)
 TRACK_WHEEL = 88           # Distance between left and right wheels (mm, same as width)
 WHEEL_DIAMETER = 30.4      # mm (LEGO 55981C05)
-MAX_STEERING_ANGLE = 77.48  # degrees (measured from CAD linkage)
+MAX_STEERING_ANGLE = 35  # degrees (measured throw of reassembled servo linkage)
 
 # Motor: N20 12V 136RPM
 MOTOR_RPM = 136
