@@ -59,7 +59,7 @@ ROBOT_MAX_WEIGHT = 1500    # 1.5kg in grams
 WHEELBASE = 76             # Distance between front and rear axles (mm, CAD: 7.6cm)
 TRACK_WHEEL = 88           # Distance between left and right wheels (mm, same as width)
 WHEEL_DIAMETER = 30.4      # mm (LEGO 55981C05)
-MAX_STEERING_ANGLE = 77.48  # degrees (measured from CAD linkage)
+MAX_STEERING_ANGLE = 35  # degrees (measured throw of reassembled servo linkage)
 
 # Motor: N20 12V 136RPM
 MOTOR_RPM = 136
@@ -119,6 +119,14 @@ CAMERA_DETECTION_RANGE = 1500  # mm max pillar detection distance
 CAMERA_MIN_DETECTION = 100 # mm min detection distance
 
 
+# Gyro heading-hold driving (primary controller). Hold a goal heading; a corner
+# is target += 90°. ToF only trims laterally when aligned.
+KP_HEADING = 0.45          # steering deg per deg of heading error
+KD_HEADING = 0.25          # damping on heading error
+KP_TRIM = 0.02             # centring: steering deg per mm of (tof_r - tof_l)
+TURN_HEADING_GATE = 20     # deg — above this we're mid-corner: drop trim, slow
+CORNER_DEBOUNCE_TICKS = 20 # ticks to ignore further corner lines after a turn
+
 # PD control parameters (from team design doc)
 KP_WALL = 0.05
 KD_WALL = 0.02
@@ -126,6 +134,18 @@ KP_PILLAR = 0.08
 KD_PILLAR = 0.03
 KP_TURN = 0.06
 KD_TURN = 0.02
+
+# Traffic-sign threading (obstacle). Red -> keep RIGHT (sign on our left),
+# green -> keep LEFT. Thread by a capped heading offset off the lane heading.
+PILLAR_TRIGGER_DIST = 650   # mm — start threading once a sign is this close
+PILLAR_TRIGGER_FOV = 60     # deg — only act on signs within this forward cone
+PILLAR_PASSED_BEARING = 80  # deg — sign is beside/behind us; back to DRIVING
+PILLAR_AVOID_TIMEOUT = 120  # ticks (~4s at 30Hz) — safety exit from avoidance
+PILLAR_CLEARANCE = 130      # mm — target gap between our centreline and the sign
+PILLAR_MAX_HEADING_OFFSET = 28  # deg — most we'll angle off the lane to dodge
+KP_PILLAR_HEADING = 0.8     # steering deg per deg of heading error
+PILLAR_WALL_MARGIN = 150    # mm — repel from a wall closer than this
+KP_PILLAR_WALL = 0.2        # steering deg per mm of wall-margin intrusion
 
 
 # Scoring (rules section 10)
