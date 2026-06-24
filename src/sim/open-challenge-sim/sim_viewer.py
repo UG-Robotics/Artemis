@@ -592,16 +592,19 @@ class Viewer:
 
         # Add decision based on state
         decision = ""
-        if state_name == "WALL_FOLLOWING":
-            wall_error = sensors.tof_right - sensors.tof_left
-            decision = f"Wall error: {wall_error:+.0f}mm"
-        elif state_name == "CORNER_TURN":
-            if controller._corner_approach_ticks > 0:
-                decision = f"Approach ({controller._corner_approach_ticks})"
+        if state_name in ("DRIVING", "WALL_FOLLOWING"):
+            err = ((controller.target_heading - sensors.imu_heading + 180) % 360) - 180
+            if abs(err) > 20:
+                decision = f"Turn to {controller.target_heading:.0f}° (err {err:+.0f}°)"
             else:
-                decision = "Turning..."
+                decision = f"Hold {controller.target_heading:.0f}° (err {err:+.0f}°)"
         elif state_name == "PILLAR_AVOIDANCE":
-            decision = f"Avoid ({controller.avoidance_side:+d})"
+            pil = controller.avoiding_pillar
+            if pil is not None:
+                side = "keep right" if pil['color'] == 'red' else "keep left"
+                decision = f"Avoid {pil['color']} ({side})"
+            else:
+                decision = "Avoid"
         elif state_name == "THREE_POINT_TURN":
             decision = f"3PT: {controller.three_point_phase.name}"
         elif state_name == "PARKING_APPROACH":

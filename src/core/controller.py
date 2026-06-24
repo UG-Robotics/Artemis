@@ -1,12 +1,12 @@
 """Autonomous controller for the WRO 2026 Future Engineers vehicle.
 
-Implements the state machine, PD wall following, pillar avoidance, three-point
-turn, and parking maneuver. This is the shared brain: the sim and the real robot
-both drive it through the same update() call.
+Shared brain: sim and robot both drive it via update(). Primary driver is gyro
+heading-hold — hold a goal heading with a PID on the IMU, a corner is just
+target_heading += 90°. ToF trims lateral position when aligned; pillars are a
+bounded heading-offset weave; parking and the three-point turn are separate.
 
-Heads up for the hardware port: update() currently reads sim-only state — exact
-pose (robot.x/y/angle) and track map queries (track.*). See robot/main.py for how
-we'll cover those on the real robot.
+Hardware-port note: update() still reads sim-only state — pose (robot.x/y) for
+the line-dedup and track.* map queries. See robot/main.py.
 """
 
 import math
@@ -27,9 +27,10 @@ def _angle_diff(a, b):
 class State(Enum):
     """Robot state machine states."""
     STARTING = auto()
-    WALL_FOLLOWING = auto()
+    DRIVING = auto()           # gyro heading-hold; corners are setpoint bumps
+    WALL_FOLLOWING = auto()    # retained alias for tooling; routes to DRIVING
     PILLAR_AVOIDANCE = auto()
-    CORNER_TURN = auto()
+    CORNER_TURN = auto()       # retained for tooling; no longer entered
     THREE_POINT_TURN = auto()
     PARKING_APPROACH = auto()
     PARKING_EXECUTE = auto()
@@ -77,15 +78,19 @@ class Controller:
         self.line_cooldown = 0  # Frames to ignore after detection
         self._last_line_pos = None  # (x, y) of last line detection
 
-        # PD control state
+        # Heading-hold state (primary driver)
+        self.target_heading = 0.0   # goal cardinal; bumped ±90° per corner
+        self.prev_heading_err = 0.0
+        self.turns = 0              # corners taken (bookkeeping/debug)
+
+        # PD control state (still used by parking approach)
         self.prev_wall_error = 0
         self.prev_pillar_error = 0
 
         # Pillar avoidance
         self.avoiding_pillar = None
-        self.avoidance_side = 0  # -1 = go left, +1 = go right
-        self.pillar_passed = False
         self.avoidance_timer = 0
+        self._pillar_lane_heading = 0.0  # lane cardinal snapshotted on entry
 
         # Corner turn
         self._corner_entry_heading = None
@@ -145,12 +150,10 @@ class Controller:
         # State machine
         if self.state == State.STARTING:
             self._handle_starting(sensors, robot, track)
-        elif self.state == State.WALL_FOLLOWING:
-            self._handle_wall_following(sensors, robot, track)
+        elif self.state in (State.DRIVING, State.WALL_FOLLOWING, State.CORNER_TURN):
+            self._handle_driving(sensors, robot, track)
         elif self.state == State.PILLAR_AVOIDANCE:
             self._handle_pillar_avoidance(sensors, robot, track)
-        elif self.state == State.CORNER_TURN:
-            self._handle_corner_turn(sensors, robot, track)
         elif self.state == State.THREE_POINT_TURN:
             self._handle_three_point_turn(sensors, robot, track)
         elif self.state == State.PARKING_APPROACH:
@@ -199,270 +202,143 @@ class Controller:
 
                 if self.laps_completed >= 3:
                     if self._is_open:
-                        pass
+                        self.state = State.STOP_SECTION  # roll to the finish section
                     elif self.state != State.THREE_POINT_TURN:
                         self.state = State.PARKING_APPROACH
 
     def _handle_starting(self, sensors, robot, track):
-        """Initial start - begin driving."""
+        """Initial start - latch the lane heading and begin driving."""
         self.start_tof_front = sensors.tof_front
         self.start_tof_rear = sensors.tof_rear
+        self.target_heading = (round(sensors.imu_heading / 90) * 90) % 360
+        self.prev_heading_err = 0.0
         robot.set_speed(SPEED_CRUISE)
         robot.set_steering(0)
-        self.state = State.WALL_FOLLOWING
+        self.state = State.DRIVING
 
-    def _handle_wall_following(self, sensors, robot, track):
-        """PD wall following using left and right ToF sensors."""
-        # Corner cooldown: soft PD centering until clear of corner area.
-        # Uses reduced-gain wall centering + heading correction to keep
-        # the robot on track without the oscillation of full PD in corners.
+    def _maybe_take_corner(self, sensors):
+        """A corner line bumps the heading setpoint by 90°, debounced."""
         if self._corner_cooldown > 0:
+            self._corner_cooldown -= 1
+        if self._corner_line_detected and self._corner_cooldown == 0:
             self._corner_line_detected = False
-            cruise = SPEED_OPEN_CRUISE if self._is_open else SPEED_CRUISE
-            robot.set_speed(cruise)
+            turn_sign = 1 if self.driving_direction == 1 else -1
+            self.target_heading = (self.target_heading + turn_sign * 90) % 360
+            self.turns += 1
+            # reset derivative so the setpoint jump isn't seen as a spike
+            self.prev_heading_err = _angle_diff(self.target_heading, sensors.imu_heading)
+            self._corner_cooldown = CORNER_DEBOUNCE_TICKS
 
-            # PD centering — gain scales with track narrowness.
-            # Narrow tracks need stronger correction to avoid wall collision.
-            narrow = self.track_width <= 700
-            wall_gain = 0.6 if narrow else 0.3
-            heading_gain = 1.5 if narrow else 0.3
+    def _heading_hold_steer(self, sensors, trim=True):
+        """PID the IMU onto target_heading. Returns (steering, turning)."""
+        heading_err = _angle_diff(self.target_heading, sensors.imu_heading)
+        turning = abs(heading_err) > TURN_HEADING_GATE
+        d_err = heading_err - self.prev_heading_err
+        self.prev_heading_err = heading_err
+        steering = heading_err * KP_HEADING + d_err * KD_HEADING
 
-            error = sensors.tof_right - sensors.tof_left
-            correction = error * KP_WALL * wall_gain
+        # gentle centring only when aligned and both side walls read real
+        if (trim and not turning
+                and sensors.tof_left < self.track_width
+                and sensors.tof_right < self.track_width):
+            steering += (sensors.tof_right - sensors.tof_left) * KP_TRIM
 
-            # Heading correction toward nearest cardinal (0/90/180/270)
-            heading = sensors.imu_heading
-            cardinal = (round(heading / 90) * 90) % 360
-            heading_error = _angle_diff(cardinal, heading)
-            correction += heading_error * heading_gain
+        return max(-WALL_FOLLOW_MAX_STEER, min(WALL_FOLLOW_MAX_STEER, steering)), turning
 
-            correction = max(-WALL_FOLLOW_MAX_STEER, min(WALL_FOLLOW_MAX_STEER, correction))
-            robot.set_steering(correction)
+    def _handle_driving(self, sensors, robot, track):
+        """Hold the lane heading, take corners as setpoint bumps, hand off to pillars."""
+        self._maybe_take_corner(sensors)
+        steering, turning = self._heading_hold_steer(sensors)
 
-            # Exit cooldown early if robot is in a straight section
-            section_idx = track.get_section_at_position(robot.x, robot.y)
-            in_straight = (section_idx is not None and
-                           track.sections[section_idx].section_type == 'straight')
-            if in_straight or sensors.tof_front > 1000:
-                self._corner_cooldown = 0  # Resume full PD
-            else:
-                self._corner_cooldown -= 1
-            return  # Skip full PD and pillar logic while in cooldown
-
-        # Pre-corner centering: aggressive PD to center + heading correction.
-        # This compensates for pillar avoidance shifting the robot off-center
-        # and ensures cardinal heading before the turn begins.
-        if self._corner_approach_ticks > 0:
-            self._corner_approach_ticks -= 1
-
-            tof_l = sensors.tof_left
-            tof_r = sensors.tof_right
-            if tof_l < self.track_width and tof_r < self.track_width:
-                error = tof_r - tof_l
-                steering = error * KP_WALL * 2.0
-            else:
-                steering = 0.0
-
-            heading = sensors.imu_heading
-            cardinal = (round(heading / 90) * 90) % 360
-            heading_error = _angle_diff(cardinal, heading)
-            # Stronger heading correction for wide tracks before corner entry
-            heading_gain = 2.0 if self.track_width > 900 else 1.5
-            steering += heading_error * heading_gain
-
-            steering = max(-WALL_FOLLOW_MAX_STEER, min(WALL_FOLLOW_MAX_STEER, steering))
-            corner_speed = SPEED_CORNER if self.track_width <= 700 else (
-                SPEED_OPEN_CORNER if self._is_open else SPEED_CORNER)
-            robot.set_speed(corner_speed)
-            robot.set_steering(steering)
-            if self._corner_approach_ticks == 0:
-                self._corner_entry_heading = None
-                self.state = State.CORNER_TURN
-            return
-
-        # Corner detection via color sensor (line at section boundary)
-        if self._corner_line_detected:
-            self._corner_line_detected = False
-            self._corner_entry_heading = sensors.imu_heading
-            self._corner_entry_distance = robot.distance_traveled
-            # More time for wide tracks to correct heading before turn
-            self._corner_approach_ticks = 20 if self.track_width > 900 else 15
-            return
-
-        # Check for pillars (only in front hemisphere, within avoidance range)
-        if sensors.pillars_visible and track.challenge_type == 'obstacle':
-            closest = sensors.pillars_visible[0]
-            if closest['distance'] < 600 and abs(closest['angle']) < 60:
-                self.avoiding_pillar = closest
-                # Red pillar: pass on RIGHT → steer so pillar is on LEFT
-                # Green pillar: pass on LEFT → steer so pillar is on RIGHT
-                if closest['color'] == 'red':
-                    self.avoidance_side = -1  # Steer left of pillar (pass on right)
-                else:
-                    self.avoidance_side = 1   # Steer right of pillar (pass on left)
-                self.pillar_passed = False
+        # dodge signs only when aligned and clear of a just-taken corner
+        if (not turning and self._corner_cooldown == 0
+                and track.challenge_type == 'obstacle'):
+            target = self._pillar_to_avoid(sensors)
+            if target is not None:
+                self.avoiding_pillar = target
                 self.avoidance_timer = 0
+                self._pillar_lane_heading = self.target_heading
                 self.state = State.PILLAR_AVOIDANCE
                 return
 
-        # PD wall following - keep centered between walls.
-        # If either sensor reads beyond track width, it's looking through a
-        # corner opening — the reading is meaningless for centering, so fall
-        # back to heading-only control until both readings are valid.
-        tof_l = sensors.tof_left
-        tof_r = sensors.tof_right
-        sensors_valid = tof_l < self.track_width and tof_r < self.track_width
-
-        if sensors_valid:
-            error = tof_r - tof_l
-            derivative = error - self.prev_wall_error
-            self.prev_wall_error = error
-            steering = error * KP_WALL + derivative * KD_WALL
+        if turning:
+            speed = SPEED_OPEN_CORNER if self._is_open else SPEED_CORNER
         else:
-            self.prev_wall_error = 0
-            steering = 0.0
-
-        # Heading correction for ALL track widths — prevents angular oscillation.
-        # Dominant term when sensors are invalid (near corners).
-        heading = sensors.imu_heading
-        cardinal = (round(heading / 90) * 90) % 360
-        heading_error = _angle_diff(cardinal, heading)
-        kp_heading = 0.5
-        steering += heading_error * kp_heading
-
-        steering = max(-WALL_FOLLOW_MAX_STEER, min(WALL_FOLLOW_MAX_STEER, steering))
-
-        cruise = SPEED_OPEN_CRUISE if self._is_open else SPEED_CRUISE
-        robot.set_speed(cruise)
+            speed = SPEED_OPEN_CRUISE if self._is_open else SPEED_CRUISE
+        robot.set_speed(speed)
         robot.set_steering(steering)
+
+    def _pillar_to_avoid(self, sensors):
+        """Nearest sign (camera is nearest-first) inside the trigger range and
+        forward cone, or None. A passed sign sits outside the cone, so it won't
+        re-trigger."""
+        for p in sensors.pillars_visible:
+            if p['distance'] < PILLAR_TRIGGER_DIST and abs(p['angle']) < PILLAR_TRIGGER_FOV:
+                return p
+        return None
 
     def _handle_pillar_avoidance(self, sensors, robot, track):
-        """Avoid a pillar by steering to the correct side with a simple offset approach."""
+        """Thread past the tracked sign: red -> keep right (sign on our left),
+        green -> keep left. Closed-loop on the sign's camera bearing toward a
+        capped heading offset, plus wall repulsion; back to DRIVING once passed."""
         self.avoidance_timer += 1
 
-        # Timeout: if we've been avoiding for too long, go back to wall following
-        if self.avoidance_timer > 90:  # ~3 seconds at 30Hz
-            self.state = State.WALL_FOLLOWING
-            self.avoiding_pillar = None
-            return
-
-        # If a corner entry line was detected during avoidance, hand off
+        # corner line takes priority: bump the heading setpoint and hand back
         if self._corner_line_detected:
             self._corner_line_detected = False
-            self._corner_entry_heading = sensors.imu_heading
-            self._corner_entry_distance = robot.distance_traveled
-            self.state = State.CORNER_TURN
+            turn_sign = 1 if self.driving_direction == 1 else -1
+            self.target_heading = (self.target_heading + turn_sign * 90) % 360
+            self.turns += 1
+            self.prev_heading_err = _angle_diff(self.target_heading, sensors.imu_heading)
+            self._corner_cooldown = CORNER_DEBOUNCE_TICKS
+            self.avoiding_pillar = None
+            self.state = State.DRIVING
+            return
+
+        # re-find the tracked sign (by identity); if gone, take the next one ahead
+        cur = None
+        ref = self.avoiding_pillar.get('pillar_ref') if self.avoiding_pillar else None
+        if ref is not None:
+            cur = next((p for p in sensors.pillars_visible
+                        if p.get('pillar_ref') is ref), None)
+        if cur is None:
+            cur = self._pillar_to_avoid(sensors)
+            self.avoiding_pillar = cur
+        if cur is None:
+            self.state = State.DRIVING
+            return
+
+        bearing = cur['angle']            # +right / -left
+        distance = max(1.0, cur['distance'])
+
+        # done once the sign is beside/behind us, or on timeout
+        if abs(bearing) > PILLAR_PASSED_BEARING or self.avoidance_timer > PILLAR_AVOID_TIMEOUT:
+            self.state = State.DRIVING
             self.avoiding_pillar = None
             return
 
-        # Simple approach: steer a fixed offset in the avoidance direction.
-        # avoidance_side: -1 = steer left (red pillar, pass right)
-        #                 +1 = steer right (green pillar, pass left)
-        steer_amount = self.avoidance_side * 14  # Moderate steering angle
+        # one-sided hinge: how far the sign still needs to move to the mandated
+        # side for PILLAR_CLEARANCE — never chase one already clear
+        clear_angle = math.degrees(math.atan2(PILLAR_CLEARANCE, distance))
+        if cur['color'] == 'red':
+            hinge = max(0.0, bearing + clear_angle)
+            offset = min(hinge, PILLAR_MAX_HEADING_OFFSET)   # angle right of lane
+        else:
+            hinge = max(0.0, clear_angle - bearing)
+            offset = -min(hinge, PILLAR_MAX_HEADING_OFFSET)  # angle left of lane
 
-        # Also do basic wall following to avoid hitting walls
-        wall_correction = 0
-        if sensors.tof_left < 120:
-            wall_correction = 8   # Push right
-        elif sensors.tof_right < 120:
-            wall_correction = -8  # Push left
+        desired = self._pillar_lane_heading + offset
+        steering = _angle_diff(desired, sensors.imu_heading) * KP_PILLAR_HEADING
 
-        steering = steer_amount + wall_correction
+        # wall repulsion: never thread ourselves into a wall
+        if sensors.tof_left < PILLAR_WALL_MARGIN:
+            steering += (PILLAR_WALL_MARGIN - sensors.tof_left) * KP_PILLAR_WALL
+        if sensors.tof_right < PILLAR_WALL_MARGIN:
+            steering -= (PILLAR_WALL_MARGIN - sensors.tof_right) * KP_PILLAR_WALL
+
         steering = max(-WALL_FOLLOW_MAX_STEER, min(WALL_FOLLOW_MAX_STEER, steering))
-
         robot.set_speed(SPEED_PILLAR)
         robot.set_steering(steering)
-
-        # Check if the pillar we were avoiding is now behind us
-        pillar_behind = False
-        if self.avoiding_pillar and 'pillar_ref' in self.avoiding_pillar:
-            ref = self.avoiding_pillar['pillar_ref']
-            dx = ref.x - robot.x
-            dy = ref.y - robot.y
-            angle_to = math.degrees(math.atan2(dy, dx))
-            relative = (angle_to - robot.angle + 180) % 360 - 180
-            if abs(relative) > 100:  # Pillar is behind us
-                pillar_behind = True
-
-        if pillar_behind or self.avoidance_timer > 45:
-            # Transition back but keep steering briefly to clear
-            if self.avoidance_timer > 50 or pillar_behind:
-                self.state = State.WALL_FOLLOWING
-                self.avoiding_pillar = None
-
-    def _handle_corner_turn(self, sensors, robot, track):
-        """Navigate a 90° corner using a bicycle model with dynamic radius.
-
-        At corner entry, the turn radius is set based on the distance to the
-        inner wall (measured by the ToF sensor on the turn side). This keeps
-        the exit position away from the inner wall even when pillar avoidance
-        shifted the robot off-center before the corner.
-
-        Steering angle: delta = atan(wheelbase / R). The IMU tracks heading
-        change; we exit when turned >= CORNER_MIN_EXIT_ANGLE.
-        """
-        # Slow down more for narrow corners to reduce angular overshoot
-        if self._is_open:
-            corner_speed = SPEED_CORNER if self.track_width <= 700 else SPEED_OPEN_CORNER
-        else:
-            corner_speed = SPEED_CORNER
-        robot.set_speed(corner_speed)
-        turn_sign = 1 if self.driving_direction == 1 else -1
-
-        if self._corner_entry_heading is None:
-            self._corner_entry_heading = sensors.imu_heading
-            self._corner_entry_distance = robot.distance_traveled
-
-            # Dynamic radius: distance from robot center to inner wall.
-            # CW right turns → inner wall is to the right (tof_right).
-            # CCW left turns → inner wall is to the left (tof_left).
-            if turn_sign == 1:
-                inner_dist = sensors.tof_right + ROBOT_WIDTH / 2
-            else:
-                inner_dist = sensors.tof_left + ROBOT_WIDTH / 2
-
-            # Radius = inner wall distance minus safety margin.
-            # After a 90° turn, the robot front sticks out ROBOT_LENGTH/2
-            # past the turn exit point, so margin must account for that
-            # plus extra for servo lag and IMU drift.
-            margin = ROBOT_LENGTH + 30  # 140mm body + 30mm dynamics buffer
-            max_r = track.track_width / 2 - ROBOT_LENGTH / 2 - 30
-            self._corner_radius = max(200, min(inner_dist - margin, max_r))
-
-        heading_turned = abs(_angle_diff(sensors.imu_heading, self._corner_entry_heading))
-        arc_traveled = robot.distance_traveled - self._corner_entry_distance
-        arc_limit = self._corner_radius * math.pi  # Full semicircle as safety
-
-        # Narrow tracks need earlier exit to account for angular overshoot
-        exit_angle = CORNER_MIN_EXIT_ANGLE
-        if self.track_width <= 700:
-            exit_angle = 78  # ~12° overshoot → actual ~90°
-
-        if heading_turned >= exit_angle:
-            # Normal exit — counter-steer briefly to kill angular momentum
-            cruise = SPEED_OPEN_CRUISE if self._is_open else SPEED_CRUISE
-            if self._is_open and self.laps_completed >= 3:
-                self.state = State.STOP_SECTION
-            else:
-                self.state = State.WALL_FOLLOWING
-            robot.set_speed(cruise)
-            robot.set_steering(-turn_sign * 5)  # Counter-steer
-            self._corner_entry_heading = None
-            self._corner_cooldown = 30
-        elif arc_traveled > arc_limit:
-            # Safety: driven too far without reaching exit angle
-            cruise = SPEED_OPEN_CRUISE if self._is_open else SPEED_CRUISE
-            if self._is_open and self.laps_completed >= 3:
-                self.state = State.STOP_SECTION
-            else:
-                self.state = State.WALL_FOLLOWING
-            robot.set_speed(cruise)
-            robot.set_steering(0)
-            self._corner_entry_heading = None
-            self._corner_cooldown = 30
-        else:
-            steer_angle = math.degrees(math.atan(WHEELBASE / self._corner_radius))
-            robot.set_steering(turn_sign * steer_angle)
 
     def _handle_three_point_turn(self, sensors, robot, track):
         """Execute a three-point turn to reverse direction.
@@ -502,7 +378,10 @@ class Controller:
                 self.driving_direction *= -1
                 self.needs_direction_change = False
                 self.direction_changed = True
-                self.state = State.WALL_FOLLOWING
+                # Latch the reversed lane heading for the heading-hold driver.
+                self.target_heading = (round(sensors.imu_heading / 90) * 90) % 360
+                self.prev_heading_err = 0.0
+                self.state = State.DRIVING
                 robot.set_steering(0)
 
     def _handle_parking_approach(self, sensors, robot, track):
@@ -573,48 +452,10 @@ class Controller:
                 self.state = State.FINISHED
 
     def _handle_stop_section(self, sensors, robot, track):
-        """Wall follow at reduced speed, verify ToF matches starting section, then stop."""
-        if self._corner_cooldown > 0:
-            self._corner_cooldown -= 1
-            cruise = SPEED_PARKING
-            robot.set_speed(cruise)
-            error = sensors.tof_right - sensors.tof_left
-            correction = error * KP_WALL * 0.3
-            heading = sensors.imu_heading
-            cardinal = (round(heading / 90) * 90) % 360
-            heading_error = _angle_diff(cardinal, heading)
-            correction += heading_error * 0.5
-            correction = max(-WALL_FOLLOW_MAX_STEER, min(WALL_FOLLOW_MAX_STEER, correction))
-            robot.set_steering(correction)
-            return
-
-        if self._corner_line_detected:
-            self._corner_line_detected = False
-            self._corner_entry_heading = sensors.imu_heading
-            self._corner_entry_distance = robot.distance_traveled
-            self._corner_approach_ticks = 15
-            self.state = State.CORNER_TURN
-            return
-
-        tof_l = sensors.tof_left
-        tof_r = sensors.tof_right
-        sensors_valid = tof_l < self.track_width and tof_r < self.track_width
-
-        if sensors_valid:
-            error = tof_r - tof_l
-            derivative = error - self.prev_wall_error
-            self.prev_wall_error = error
-            steering = error * KP_WALL + derivative * KD_WALL
-        else:
-            self.prev_wall_error = 0
-            steering = 0.0
-
-        heading = sensors.imu_heading
-        cardinal = (round(heading / 90) * 90) % 360
-        heading_error = _angle_diff(cardinal, heading)
-        steering += heading_error * 0.5
-
-        steering = max(-WALL_FOLLOW_MAX_STEER, min(WALL_FOLLOW_MAX_STEER, steering))
+        """Heading-hold at reduced speed (taking any remaining corner), then stop
+        once the ToF readings match the starting section."""
+        self._maybe_take_corner(sensors)
+        steering, _ = self._heading_hold_steer(sensors)
         robot.set_speed(SPEED_PARKING)
         robot.set_steering(steering)
 
