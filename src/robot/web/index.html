@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Artemis Control</title>
+<style>
+  :root { --bg:#14161a; --panel:#1d2026; --edge:#2a2e37; --accent:#3fb6ff; --go:#39d98a; --stop:#ff5a5a; --txt:#e6e9ee; --dim:#8a93a0; }
+  * { box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--txt);
+              font-family:-apple-system,Segoe UI,Roboto,sans-serif; overflow:hidden; }
+  .wrap { display:flex; flex-direction:column; height:100%; }
+  .cam { position:relative; background:#000; flex:0 0 auto; }
+  .cam img { display:block; width:100%; max-height:42vh; object-fit:contain; background:#000; }
+  .cam .tag { position:absolute; top:8px; left:10px; font-size:12px; color:var(--accent);
+              background:rgba(0,0,0,.45); padding:2px 8px; border-radius:6px; }
+  .deck { flex:1 1 auto; display:flex; align-items:center; justify-content:space-between;
+          gap:12px; padding:14px; min-height:0; }
+  .cluster { display:flex; gap:14px; }
+  .cluster.steer { flex-direction:row; }       /* left/right, horizontal — left side  */
+  .cluster.throttle { flex-direction:column; } /* fwd/rev, vertical    — right side */
+  .center { display:flex; flex-direction:column; align-items:center; gap:12px; flex:1 1 auto; max-width:240px; }
+  button.pad { width:108px; height:108px; border-radius:18px; border:1px solid var(--edge);
+               background:var(--panel); color:var(--txt); font-size:40px; line-height:1;
+               touch-action:none; transition:transform .04s, background .08s; }
+  button.pad:active, button.pad.on { background:var(--accent); color:#06121c; transform:scale(.96); }
+  #estop { width:100%; padding:16px; border-radius:14px; border:none; background:var(--stop);
+           color:#fff; font-weight:700; font-size:18px; letter-spacing:.5px; }
+  #estop:active { filter:brightness(.9); }
+  .speed { width:100%; }
+  .speed label { display:flex; justify-content:space-between; font-size:13px; color:var(--dim); margin-bottom:4px; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .status { font-size:12px; color:var(--dim); text-align:center; line-height:1.5; }
+  .status b { color:var(--txt); font-weight:600; }
+  .sim { color:#ffd166; }
+  .sensors { flex:0 0 auto; display:grid; grid-template-columns:repeat(5,1fr); gap:8px;
+             padding:10px 14px 16px; border-top:1px solid var(--edge); background:var(--panel); }
+  .sensors .cell { text-align:center; }
+  .sensors .lab { display:block; font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; }
+  .sensors .val { display:block; font-size:20px; font-weight:600; font-variant-numeric:tabular-nums;
+                  font-family:ui-monospace,Menlo,Consolas,monospace; margin-top:2px; }
+  .sensors .val .u { font-size:11px; color:var(--dim); margin-left:1px; }
+  .sensors .val.stale { color:var(--dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="cam">
+    <img src="/stream.mjpg" alt="camera">
+    <div class="tag">LIVE</div>
+  </div>
+  <div class="deck">
+    <!-- steering: horizontal, left side -->
+    <div class="cluster steer">
+      <button class="pad" data-dir="left" aria-label="left">&#9664;</button>
+      <button class="pad" data-dir="right" aria-label="right">&#9654;</button>
+    </div>
+    <!-- middle: speed, e-stop, status -->
+    <div class="center">
+      <button id="estop">STOP</button>
+      <div class="speed">
+        <label>speed <span id="spdval">40%</span></label>
+        <input type="range" id="speed" min="0" max="100" value="40">
+      </div>
+      <div class="status" id="status">connecting…</div>
+    </div>
+    <!-- throttle: vertical, right side -->
+    <div class="cluster throttle">
+      <button class="pad" data-dir="fwd" aria-label="forward">&#9650;</button>
+      <button class="pad" data-dir="rev" aria-label="reverse">&#9660;</button>
+    </div>
+  </div>
+  <!-- live sensor readout -->
+  <div class="sensors">
+    <div class="cell"><span class="lab">Front</span><span class="val" id="s-front">—</span></div>
+    <div class="cell"><span class="lab">Left</span><span class="val" id="s-left">—</span></div>
+    <div class="cell"><span class="lab">Heading</span><span class="val" id="s-imu">—</span></div>
+    <div class="cell"><span class="lab">Right</span><span class="val" id="s-right">—</span></div>
+    <div class="cell"><span class="lab">Rear</span><span class="val" id="s-rear">—</span></div>
+  </div>
+</div>
+<script>
+const pressed = {fwd:false, rev:false, left:false, right:false};
+let speedScale = 0.4;
+
+function intents() {
+  const throttle = (pressed.fwd ? 1 : 0) + (pressed.rev ? -1 : 0);
+  const steer = (pressed.right ? 1 : 0) + (pressed.left ? -1 : 0);
+  return {throttle, steer};
+}
+let inflight = false;
+async function send(extra) {
+  const body = Object.assign(intents(), {speed_scale: speedScale}, extra || {});
+  if (inflight) return;
+  inflight = true;
+  try {
+    const r = await fetch('/control', {method:'POST', headers:{'Content-Type':'application/json'},
+                                       body: JSON.stringify(body)});
+    render(await r.json());
+  } catch (e) { setStatus('disconnected', true); }
+  finally { inflight = false; }
+}
+function render(s) {
+  const sim = s.simulated ? ' · <span class="sim">SIMULATED (no hardware)</span>' : ' · <b>ARMED</b>';
+  setStatus(`steer <b>${s.steering_deg}°</b> · speed <b>${s.speed_frac}</b>${sim}`);
+}
+function setStatus(html, raw) { document.getElementById('status').innerHTML = raw ? html : html; }
+
+function set(dir, on) {
+  if (pressed[dir] === on) return;
+  pressed[dir] = on;
+  document.querySelector(`[data-dir="${dir}"]`)?.classList.toggle('on', on);
+  send();
+}
+
+// pointer (touch + mouse) on the pads
+for (const b of document.querySelectorAll('.pad')) {
+  const dir = b.dataset.dir;
+  const down = e => { e.preventDefault(); b.setPointerCapture?.(e.pointerId); set(dir, true); };
+  const up = e => { e.preventDefault(); set(dir, false); };
+  b.addEventListener('pointerdown', down);
+  b.addEventListener('pointerup', up);
+  b.addEventListener('pointercancel', up);
+  b.addEventListener('lostpointercapture', up);
+}
+
+// keyboard
+const KEYS = {ArrowUp:'fwd', KeyW:'fwd', ArrowDown:'rev', KeyS:'rev',
+              ArrowLeft:'left', KeyA:'left', ArrowRight:'right', KeyD:'right'};
+addEventListener('keydown', e => { const d = KEYS[e.code]; if (d && !e.repeat) { e.preventDefault(); set(d, true); } });
+addEventListener('keyup',   e => { const d = KEYS[e.code]; if (d) { e.preventDefault(); set(d, false); } });
+
+// e-stop + speed
+async function estop() {
+  for (const k in pressed) pressed[k] = false;
+  document.querySelectorAll('.pad.on').forEach(b => b.classList.remove('on'));
+  try { render(await (await fetch('/stop', {method:'POST'})).json()); } catch (e) {}
+}
+document.getElementById('estop').addEventListener('click', estop);
+const spd = document.getElementById('speed');
+spd.addEventListener('input', () => {
+  speedScale = spd.value / 100;
+  document.getElementById('spdval').textContent = spd.value + '%';
+  send();
+});
+
+// safety: stop if the tab is hidden/loses focus, and feed the deadman while moving
+addEventListener('blur', estop);
+document.addEventListener('visibilitychange', () => { if (document.hidden) estop(); });
+setInterval(() => { const {throttle, steer} = intents(); if (throttle || steer) send(); }, 200);
+send();
+
+// live sensor readout (ToFs + IMU)
+function cell(id, v, unit) {
+  const el = document.getElementById(id);
+  if (v == null) { el.textContent = '—'; el.classList.add('stale'); }
+  else { el.innerHTML = v + '<span class="u">' + unit + '</span>'; el.classList.remove('stale'); }
+}
+async function pollSensors() {
+  try {
+    const s = await (await fetch('/sensors')).json();
+    cell('s-front', s.tof.front, 'mm'); cell('s-rear', s.tof.rear, 'mm');
+    cell('s-left', s.tof.left, 'mm');   cell('s-right', s.tof.right, 'mm');
+    cell('s-imu', s.imu_heading, '°');
+  } catch (e) {}
+}
+setInterval(pollSensors, 250);
+pollSensors();
+</script>
+</body>
+</html>
