@@ -44,6 +44,21 @@ PARKING_LENGTH_FACTOR = 1.5 # 1.5 * robot length = 210mm with current dimensions
 PARKING_MARKER_SIZE = (200, 20, 100)  # Magenta markers: 20cm x 2cm x 10cm
 PARKING_PARALLEL_TOLERANCE = 20  # 2cm = 20mm wheel distance difference
 
+# Parallel-park maneuver (gyro heading + encoder distance). The
+# bay is on park_side; we pull in at a fixed heading offset, straighten back to
+# the lane heading, then seat. Fallbacks stop cleanly in-section if it can't lock.
+# The bay's perpendicular offset (what the camera/markers give) drives a heading
+# crab that translates us into the bay, collapsing to parallel as the offset -> 0.
+PARK_CRAB_ANGLE = 34        # deg — max heading crab toward the bay
+KP_CRAB = 0.18              # crab deg per mm of perpendicular bay offset
+PARK_LAT_TOL = 42           # mm — perpendicular offset that counts as seated
+PARK_ALIGN_GATE = 8         # deg — |heading - lane| to count as parallel at stop
+PARK_SEAT_LEAD = 20         # mm — enter the seat this far before bay centre
+PARK_SPEED = 0.28           # fraction of max speed through the approach
+PARK_SEAT_SPEED = 0.08      # fraction of max speed during the final seat
+PARK_APPROACH_MAX_DIST = 2600  # mm — approach travel before giving up -> stop in section
+PARK_OVERRUN = 85           # mm — bay-centre overshoot in seat before giving up
+
 
 # Robot specifications (from CAD model measurements, 2026-05-14)
 ROBOT_LENGTH = 140         # mm (CAD: 14cm)

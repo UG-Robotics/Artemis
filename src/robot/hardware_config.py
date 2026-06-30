@@ -48,7 +48,18 @@ class Tof:
 # IMU — MPU6050.
 class Imu:
     I2C_ADDRESS = 0x68   # 0x69 if AD0 high. VERIFY.
-    GYRO_Z_BIAS = 0.0    # VERIFY: deg/s offset to subtract at rest
+    # Register config — see docs/imu-accuracy.md. Lowest gyro range = finest
+    # heading resolution (the robot turns slowly); DLPF tames vibration noise
+    # without too much control-loop latency.
+    GYRO_FS_SEL = 0      # 0 = ±250°/s
+    DLPF_CFG = 3         # gyro 42 Hz bandwidth, 4.9 ms delay
+    SAMPLE_RATE_DIV = 4  # 1 kHz / (1 + 4) = 200 Hz
+    GYRO_Z_SIGN = 1      # flip to -1 if heading runs backwards once mounted. VERIFY.
+    GYRO_Z_BIAS = 0.0    # deg/s at rest; overwritten by the startup calibration
+    CALIB_SAMPLES = 600  # stationary samples averaged at startup (after warm-up)
+    # ZUPT (zero-velocity update): when still, freeze heading and refine the bias.
+    ZUPT_GYRO_THRESH = 1.5    # deg/s — |gyro| below this counts as "not turning"
+    ZUPT_ACCEL_THRESH = 0.06  # g — ||accel|-1g| below this counts as "not moving"
 
 
 # Downward color sensor — TCS34725.

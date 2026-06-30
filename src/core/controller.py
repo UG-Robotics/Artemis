@@ -50,10 +50,9 @@ class ThreePointPhase(Enum):
 class ParkingPhase(Enum):
     """Phases of the parallel parking maneuver."""
     APPROACH = auto()
-    ALIGN = auto()
     STEER_IN = auto()
     STRAIGHTEN = auto()
-    FINAL_ADJUST = auto()
+    SETTLE = auto()
     COMPLETE = auto()
 
 
@@ -111,6 +110,9 @@ class Controller:
         self.parking_phase = ParkingPhase.APPROACH
         self.parking_start_heading = 0
         self.parking_timer = 0
+        self.park_side = 0            # +1 bay on our right, -1 on our left
+        self._park_entry_dist = None  # encoder mark when approach began
+        self._park_phase_dist = 0.0   # encoder mark for the current phase
 
         # Stop section verification (open challenge)
         self.start_tof_front = None
@@ -385,71 +387,89 @@ class Controller:
                 robot.set_steering(0)
 
     def _handle_parking_approach(self, sensors, robot, track):
-        """Approach the parking lot after completing 3 laps."""
-        if track.parking_lot is None:
+        """Drive the lane heading at parking speed until the bay is beside us, then
+        hand to the pull-in. Falls back to a clean in-section stop if we overrun."""
+        pl = getattr(track, 'parking_lot', None)
+        if pl is None:
+            robot.stop()
             self.state = State.FINISHED
             return
 
-        # Slow down and look for parking lot
+        self._maybe_take_corner(sensors)
+
+        if self._park_entry_dist is None:
+            self._park_entry_dist = robot.distance_traveled
+
+        remaining, lateral, s = self._bay_frame(robot, pl)
+        # A real corner (post-bump heading swing) is a big error; our crab is small.
+        cornering = (self._corner_cooldown > 0
+                     or abs(_angle_diff(self.target_heading, sensors.imu_heading)) > 55)
+        if cornering:
+            steering, _ = self._heading_hold_steer(sensors)  # drive through the corner
+        else:
+            steering = self._park_crab_steer(sensors, self.target_heading, lateral)
         robot.set_speed(SPEED_PARKING)
-
-        error = sensors.tof_right - sensors.tof_left
-        derivative = error - self.prev_wall_error
-        self.prev_wall_error = error
-
-        steering = error * KP_WALL * 0.5 + derivative * KD_WALL * 0.5
         robot.set_steering(steering)
 
-        # Check if we're in the parking section.
-        # Use ToF sensors to detect the gap created by parking markers.
-        pl = track.parking_lot
+        traveled = robot.distance_traveled - self._park_entry_dist
+        # Bay unreachable in time (lap 3 ends just past it) -> stop cleanly in the
+        # section so we still bank the finish-section points.
+        if traveled > PARK_APPROACH_MAX_DIST or self.elapsed_time > ROUND_TIME - 6:
+            robot.stop()
+            self.state = State.FINISHED
+            return
 
-        dist_to_parking = math.sqrt((robot.x - (pl.x + pl.width/2))**2 +
-                                     (robot.y - (pl.y + pl.length/2))**2)
-
-        if dist_to_parking < 400:
-            self.parking_start_heading = sensors.imu_heading
+        # Bay centred ahead of us and within this lane -> hand to the final seat.
+        if not cornering and remaining <= PARK_SEAT_LEAD and abs(lateral) < 0.6 * self.track_width:
+            self.park_side = s
+            self.parking_start_heading = self.target_heading
+            self.parking_timer = 0
+            self._park_phase_dist = robot.distance_traveled
             self.state = State.PARKING_EXECUTE
-            self.parking_phase = ParkingPhase.STEER_IN
+
+    def _bay_frame(self, robot, pl):
+        """Bay pose in our heading frame (camera stand-in): returns (remaining,
+        lateral, side). remaining = bay centre ahead(+)/behind(-); lateral = its
+        perpendicular offset (+right/-left); side = which side the bay is on."""
+        h = math.radians(self.target_heading)
+        hx, hy = math.cos(h), math.sin(h)
+        bx = (pl.x + pl.width / 2) - robot.x
+        by = (pl.y + pl.length / 2) - robot.y
+        remaining = bx * hx + by * hy
+        lateral = -bx * hy + by * hx
+        return remaining, lateral, (1 if lateral >= 0 else -1)
+
+    def _park_crab_steer(self, sensors, lane, lateral):
+        """Steer toward a heading crabbed off the lane in proportion to the bay's
+        perpendicular offset — translates us into the bay, collapsing to parallel
+        as the offset -> 0."""
+        crab = max(-PARK_CRAB_ANGLE, min(PARK_CRAB_ANGLE, lateral * KP_CRAB))
+        err = _angle_diff(lane + crab, sensors.imu_heading)
+        return max(-WALL_FOLLOW_MAX_STEER, min(WALL_FOLLOW_MAX_STEER, err * KP_HEADING))
 
     def _handle_parking_execute(self, sensors, robot, track):
-        """Execute parallel parking maneuver."""
-        if self.parking_phase == ParkingPhase.STEER_IN:
-            # Steer toward the parking spot (toward outer wall)
-            robot.set_speed(SPEED_PARKING * 0.5)
+        """Final seat: keep crabbing the bay offset to zero and the heading to the
+        lane at low speed; stop once centred and parallel, or on overrun."""
+        pl = getattr(track, 'parking_lot', None)
+        if pl is None:
+            robot.stop()
+            self.state = State.FINISHED
+            return
+        lane = self.parking_start_heading
+        remaining, lateral, _ = self._bay_frame(robot, pl)
+        self.parking_timer += 1
 
-            # Determine which direction to steer based on parking position
-            pl = track.parking_lot
-            if pl.section_idx == 0:  # Top - park against top wall
-                robot.set_steering(-15 * self.driving_direction)
-            elif pl.section_idx == 1:  # Right - park against right wall
-                robot.set_steering(-15 * self.driving_direction)
-            elif pl.section_idx == 2:  # Bottom
-                robot.set_steering(15 * self.driving_direction)
-            else:  # Left
-                robot.set_steering(15 * self.driving_direction)
+        robot.set_speed(PARK_SEAT_SPEED)
+        robot.set_steering(self._park_crab_steer(sensors, lane, lateral))
 
-            # Check if we're close to the outer wall
-            if sensors.tof_front < 200 or sensors.tof_right < 100 or sensors.tof_left < 100:
-                self.parking_phase = ParkingPhase.STRAIGHTEN
-
-        elif self.parking_phase == ParkingPhase.STRAIGHTEN:
-            heading_diff = _angle_diff(sensors.imu_heading, self.parking_start_heading)
-            robot.set_speed(SPEED_PARKING * 0.3)
-
-            if abs(heading_diff) > 5:
-                robot.set_steering(-heading_diff * 0.3)
-            else:
-                robot.set_steering(0)
-                self.parking_phase = ParkingPhase.FINAL_ADJUST
-
-        elif self.parking_phase == ParkingPhase.FINAL_ADJUST:
-            # Small adjustments
-            self.parking_timer += 1
-            if self.parking_timer > 30:  # ~1 second
-                robot.stop()
-                self.parking_phase = ParkingPhase.COMPLETE
-                self.state = State.FINISHED
+        aligned = abs(_angle_diff(sensors.imu_heading, lane)) <= PARK_ALIGN_GATE
+        centred = abs(lateral) <= PARK_LAT_TOL
+        seated = robot.distance_traveled - self._park_phase_dist
+        if (aligned and centred) or seated > PARK_OVERRUN:
+            robot.set_steering(0)
+            robot.stop()
+            self.parking_phase = ParkingPhase.COMPLETE
+            self.state = State.FINISHED
 
     def _handle_stop_section(self, sensors, robot, track):
         """Heading-hold at reduced speed (taking any remaining corner), then stop
