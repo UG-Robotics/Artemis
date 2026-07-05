@@ -44,7 +44,8 @@ class PlaceholderSource:
         cx, cy = self.w // 2, self.h // 2
         d.line([(cx - 22, cy), (cx + 22, cy)], fill=(70, 80, 92))
         d.line([(cx, cy - 22), (cx, cy + 22)], fill=(70, 80, 92))
-        d.text((12, 10), "ARTEMIS — DEV CAMERA (no hardware)", fill=(120, 200, 255))
+        # ASCII only: PIL's default bitmap font is latin-1 and dies on em-dashes.
+        d.text((12, 10), "ARTEMIS - DEV CAMERA (no hardware)", fill=(120, 200, 255))
         d.text((12, 28), time.strftime("%H:%M:%S"), fill=(150, 160, 170))
         st = self.teleop.state() if self.teleop else {}
         d.text((12, self.h - 42),
@@ -82,8 +83,8 @@ def make_camera_source(teleop=None):
     if _PI_CAM:
         try:
             return PiCameraSource()
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"PiCameraSource failed ({exc!r}); falling back to placeholder")
     if _PIL:
         return PlaceholderSource(teleop=teleop)
     raise RuntimeError("No camera: install picamera2 (Pi) or Pillow (dev placeholder).")

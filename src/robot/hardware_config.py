@@ -9,14 +9,15 @@ guess from the BOM/CAD for now — we'll verify it on the actual robot.
 GPIO_MODE = "BCM"
 
 
-# Drive motor — N20 gearmotor via a TB6612FNG H-bridge.
+# Drive motor — 12V 300RPM encoder gearmotor via a TB6612FNG H-bridge.
+# Pins per the Cirkit schematic export (docs/schematics/), 2026-07-03.
 class Motor:
-    PIN_PWM = 12      # PWMA (hardware PWM pin). VERIFY against schemes/.
-    PIN_IN1 = 23      # AIN1 (direction)
-    PIN_IN2 = 24      # AIN2 (direction)
-    PIN_STBY = 25     # STBY (high = enabled)
-    PIN_ENC_A = 5     # encoder ch A. VERIFY the motor has an encoder + wiring.
-    PIN_ENC_B = 6     # encoder ch B
+    PIN_PWM = 13      # PWMB via level shifter LV2->HV2 (hardware PWM pin)
+    PIN_IN1 = 5       # BIN1 (direction)
+    PIN_IN2 = 6       # BIN2 (direction)
+    PIN_STBY = 23     # STBY (high = enabled)
+    PIN_ENC_A = None  # VERIFY — schematic only shows encoder B wired
+    PIN_ENC_B = 24    # encoder ch B
     PWM_FREQUENCY_HZ = 1000  # VERIFY
 
     OUTPUT_RPM = None              # VERIFY measured RPM at the wheel
@@ -26,23 +27,41 @@ class Motor:
 
 # Steering servo.
 class Servo:
-    PIN_SIGNAL = 13   # hardware PWM pin. VERIFY.
-    MODEL = "SG90"    # VERIFY — BOM also lists MG996R
-    # Pulse widths (us). Placeholders — jog the real linkage and record these.
+    PIN_SIGNAL = 18   # via level shifter LV1->HV1 (hardware PWM pin)
+    MODEL = "SG90"
+    # Pulse widths (us): CENTER = wheels straight; MIN/MAX = pulse at full
+    # LEFT/RIGHT throw (i.e. at -/+ MAX_STEERING_ANGLE = 35 deg).
+    # Placeholders — jog the real linkage and record these.
     PULSE_CENTER_US = 1500
     PULSE_MIN_US = 1000
     PULSE_MAX_US = 2000
     DIRECTION = 1     # flip if positive steering turns the wrong way. VERIFY.
+    # Steering slew rate (deg/s): how fast the wheels sweep toward a new
+    # target. Full lock-to-lock (70 deg) takes 70/SLEW_RATE_DPS seconds.
+    SLEW_RATE_DPS = 90.0
     # Steering limit is core.config.MAX_STEERING_ANGLE (77.48° from CAD). VERIFY.
 
 
 # ToF distance sensors.
+# NOTE: the Pi's I2C bus is set to 50 kHz (dtparam=i2c_arm_baudrate=50000 in
+# /boot/firmware/config.txt) — at the default 100 kHz the long init writes
+# fail on some sensors with this wiring.
 class Tof:
     MODEL = "VL53L1X"  # VERIFY — notes also say 3x VL53L0X
     COUNT = 4          # must match core.config.TOF_COUNT
     # Shared bus, same default address — enable each via XSHUT and reassign.
-    XSHUT_PINS = {"front": 17, "left": 27, "right": 22, "rear": 4}  # VERIFY
+    # XSHUT GPIOs verified electrically on 2026-07-03 (matches Cirkit
+    # schematic after the 4th wire moved from GPIO4 to GPIO22).
+    # Position labels confirmed by the hand-wave test on 2026-07-03.
+    XSHUT_PINS = {"front": 26, "left": 25, "right": 16, "rear": 22}
     I2C_ADDRESSES = {"front": 0x30, "left": 0x31, "right": 0x32, "rear": 0x33}
+    DISTANCE_MODE = 2        # 1=short (<=1.36m), 2=long (<=3.6m) — WRO walls need long
+    TIMING_BUDGET_MS = 50    # per-sensor; 4 sensors ~ 20Hz effective loop rate
+
+
+# Start button — momentary, 10k pulldown to GND (pressed = HIGH).
+class Button:
+    PIN = 17
 
 
 # IMU — MPU6050.
