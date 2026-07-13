@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=pi
 # Point WorkingDirectory at the repo's src/ so `robot` and `core` import cleanly.
-WorkingDirectory=/home/pi/Artemis/src
+WorkingDirectory=/home/pi/artemis/src
 ExecStart=/usr/bin/python3 -m robot.web.app
 Restart=always
 RestartSec=2

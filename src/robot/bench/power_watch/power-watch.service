@@ -1,0 +1,11 @@
+[Unit]
+Description=Log Pi power health (undervoltage/throttle flags) to /home/pi/power.log
+After=multi-user.target
+
+[Service]
+ExecStart=/home/pi/artemis/src/robot/bench/power_watch/power_watch.sh
+Restart=always
+User=pi
+
+[Install]
+WantedBy=multi-user.target

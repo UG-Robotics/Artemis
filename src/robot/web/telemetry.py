@@ -9,8 +9,14 @@ from robot.drivers.tof import TofArray
 
 class Telemetry:
     def __init__(self):
-        self._tof = TofArray()
-        self._imu = ImuDriver()
+        # Don't let one flaky sensor kill the whole panel — show what works.
+        self._tof = TofArray(require_all=False)
+        # IMU may be absent (currently missing from the I2C bus — suspected
+        # power wiring); the panel shows heading=null rather than dying.
+        try:
+            self._imu = ImuDriver()
+        except Exception:
+            self._imu = None
         self.simulated = False
 
     def read(self) -> dict:
@@ -24,9 +30,10 @@ class Telemetry:
             self.simulated = True
 
         try:
-            heading = round(self._imu.heading(), 1)
+            heading = round(self._imu.heading(), 1) if self._imu else None
         except Exception:
             heading = None
+        if heading is None:
             self.simulated = True
 
         return {"tof": tof, "imu_heading": heading, "simulated": self.simulated}
@@ -34,6 +41,7 @@ class Telemetry:
     def close(self) -> None:
         for dev in (self._tof, self._imu):
             try:
-                dev.close()
+                if dev is not None:
+                    dev.close()
             except Exception:
                 pass

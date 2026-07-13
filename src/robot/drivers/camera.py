@@ -21,7 +21,10 @@ class Camera:
 
     def __init__(self, config=CameraConfig):
         self.config = config
-        # TODO: start Picamera2 at config.RESOLUTION/FRAMERATE.
+        # TODO: start Picamera2 at config.RESOLUTION/FRAMERATE. Apply the same
+        # upside-down flip as camera_feed.py:
+        #   Transform(hflip=int(config.HFLIP), vflip=int(config.VFLIP))
+        # or the pillar angles come out mirrored/inverted.
 
     def detect_pillars(self) -> list:
         """Visible pillars, nearest first ([] when none).

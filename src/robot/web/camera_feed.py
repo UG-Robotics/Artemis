@@ -7,6 +7,8 @@ on a dev machine. Both expose frames() -> generator of JPEG bytes.
 import io
 import time
 
+from robot.hardware_config import Camera as CameraConfig
+
 try:
     from picamera2 import Picamera2  # type: ignore
     _PI_CAM = True
@@ -44,7 +46,8 @@ class PlaceholderSource:
         cx, cy = self.w // 2, self.h // 2
         d.line([(cx - 22, cy), (cx + 22, cy)], fill=(70, 80, 92))
         d.line([(cx, cy - 22), (cx, cy + 22)], fill=(70, 80, 92))
-        d.text((12, 10), "ARTEMIS — DEV CAMERA (no hardware)", fill=(120, 200, 255))
+        # ASCII only: PIL's default bitmap font is latin-1 and dies on em-dashes.
+        d.text((12, 10), "ARTEMIS - DEV CAMERA (no hardware)", fill=(120, 200, 255))
         d.text((12, 28), time.strftime("%H:%M:%S"), fill=(150, 160, 170))
         st = self.teleop.state() if self.teleop else {}
         d.text((12, self.h - 42),
@@ -61,10 +64,15 @@ class PiCameraSource:
 
     def __init__(self, size=(640, 480), fps=20):
         from PIL import Image  # encode frames; Pillow is light on the Pi
+        from libcamera import Transform  # ships with picamera2 on the Pi
         self._Image = Image
         self.cam = Picamera2()
+        # Camera is mounted upside down — flip in-sensor (180°) so the stream
+        # and any downstream detection see an upright frame at zero CPU cost.
+        transform = Transform(hflip=int(CameraConfig.HFLIP),
+                              vflip=int(CameraConfig.VFLIP))
         self.cam.configure(self.cam.create_video_configuration(
-            main={"size": size, "format": "RGB888"}))
+            main={"size": size, "format": "RGB888"}, transform=transform))
         self.cam.start()
         self.period = 1.0 / fps
 
@@ -82,8 +90,8 @@ def make_camera_source(teleop=None):
     if _PI_CAM:
         try:
             return PiCameraSource()
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"PiCameraSource failed ({exc!r}); falling back to placeholder")
     if _PIL:
         return PlaceholderSource(teleop=teleop)
     raise RuntimeError("No camera: install picamera2 (Pi) or Pillow (dev placeholder).")
