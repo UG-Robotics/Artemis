@@ -7,6 +7,8 @@ on a dev machine. Both expose frames() -> generator of JPEG bytes.
 import io
 import time
 
+from robot.hardware_config import Camera as CameraConfig
+
 try:
     from picamera2 import Picamera2  # type: ignore
     _PI_CAM = True
@@ -62,10 +64,15 @@ class PiCameraSource:
 
     def __init__(self, size=(640, 480), fps=20):
         from PIL import Image  # encode frames; Pillow is light on the Pi
+        from libcamera import Transform  # ships with picamera2 on the Pi
         self._Image = Image
         self.cam = Picamera2()
+        # Camera is mounted upside down — flip in-sensor (180°) so the stream
+        # and any downstream detection see an upright frame at zero CPU cost.
+        transform = Transform(hflip=int(CameraConfig.HFLIP),
+                              vflip=int(CameraConfig.VFLIP))
         self.cam.configure(self.cam.create_video_configuration(
-            main={"size": size, "format": "RGB888"}))
+            main={"size": size, "format": "RGB888"}, transform=transform))
         self.cam.start()
         self.period = 1.0 / fps
 

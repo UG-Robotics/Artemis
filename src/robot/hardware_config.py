@@ -93,5 +93,10 @@ class Color:
 class Camera:
     RESOLUTION = (640, 480)   # VERIFY the Pi 3B+ keeps up
     FRAMERATE = 30            # VERIFY
+    # The camera is mounted upside down on the chassis, so flip both axes
+    # (= 180° rotation) in-sensor. Every consumer (web stream + pillar
+    # detector) then sees an upright frame. Set both False if it's remounted.
+    HFLIP = True
+    VFLIP = True
     HSV_RED = None            # VERIFY under competition lighting
     HSV_GREEN = None
