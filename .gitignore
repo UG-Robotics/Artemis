@@ -20,3 +20,22 @@ sim_backup/
 files/
 docs/
 .claude/
+
+# CAD / 3D-model binaries — kept local only (organised under models/).
+# Large; source lives in the team's CAD tool, not git.
+*.stl
+*.STL
+*.step
+*.STEP
+*.stp
+*.STP
+*.sldprt
+*.SLDPRT
+*.3mf
+*.svg
+# Local CAD/measurement reference (screenshots etc.)
+models/reference/
+
+# Robot credentials / host config — copy .env.robot.example and fill in locally.
+.env
+.env.robot
