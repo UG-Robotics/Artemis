@@ -33,7 +33,10 @@ class ImuDriver:
     """Heading source for the controller (calibrated gyro-Z integration + ZUPT)."""
 
     # MPU6050 registers
+    WHO_AM_I = 0x75
+    WHO_AM_I_MPU6050 = 0x68   # genuine part; counterfeits (relabelled ICM-20689) read 0x98
     PWR_MGMT_1 = 0x6B
+    SLEEP_BIT = 0x40
     SMPLRT_DIV = 0x19
     CONFIG = 0x1A
     GYRO_CONFIG = 0x1B
@@ -57,8 +60,27 @@ class ImuDriver:
 
     def _init_device(self) -> None:
         b, a, cfg = self._bus, self.config.I2C_ADDRESS, self.config
+        # Reject counterfeits/dead chips. A fake relabelled "MPU-6050A" (really an
+        # ICM-20689) ACKs I2C and reports WHO_AM_I=0x98, but ignores every config
+        # write and outputs all-zero data — so heading() would silently read a
+        # constant 0 that looks healthy. Verify the genuine ID *and* that the chip
+        # actually wakes; raise otherwise so the caller (telemetry) reports null.
+        who = b.read_byte_data(a, self.WHO_AM_I)
+        if who != self.WHO_AM_I_MPU6050:
+            raise RuntimeError(
+                f"IMU at 0x{a:02x}: WHO_AM_I=0x{who:02x}, expected 0x68 — not a "
+                "genuine MPU6050 (0x98 = counterfeit ICM-20689). Replace the module."
+            )
+        b.write_byte_data(a, self.PWR_MGMT_1, 0x80)  # device reset
+        time.sleep(0.1)
         b.write_byte_data(a, self.PWR_MGMT_1, 0x01)  # wake; clock = gyro PLL (stable)
         time.sleep(0.05)
+        pwr = b.read_byte_data(a, self.PWR_MGMT_1)
+        if pwr & self.SLEEP_BIT:
+            raise RuntimeError(
+                f"IMU at 0x{a:02x} did not wake (PWR_MGMT_1=0x{pwr:02x}, SLEEP set) — "
+                "dead or counterfeit chip ignoring writes. Replace the module."
+            )
         b.write_byte_data(a, self.SMPLRT_DIV, cfg.SAMPLE_RATE_DIV)
         b.write_byte_data(a, self.CONFIG, cfg.DLPF_CFG & 0x07)
         b.write_byte_data(a, self.GYRO_CONFIG, (cfg.GYRO_FS_SEL & 0x03) << 3)
