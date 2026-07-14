@@ -9,13 +9,19 @@ guess from the BOM/CAD for now — we'll verify it on the actual robot.
 GPIO_MODE = "BCM"
 
 
-# Drive motor — 12V 300RPM encoder gearmotor via a TB6612FNG H-bridge.
-# Pins per the Cirkit schematic export (docs/schematics/), 2026-07-03.
+# Drive motor — 12V 300RPM gearmotor via a TB6612FNG H-bridge.
+# Uses CHANNEL A (channel B confirmed dead at chip level, 2026-07): motor leads
+# on A01/A02, driver inputs on PWMA/AIN1/AIN2. The Pi-side GPIOs are unchanged
+# from the old channel-B wiring — only the TB6612 terminals moved. Level shifter
+# removed 2026-07-13 — logic driven direct from 3.3V GPIO (TB6612 VIH>=2.0V).
 class Motor:
-    PIN_PWM = 13      # PWMB via level shifter LV2->HV2 (hardware PWM pin)
-    PIN_IN1 = 5       # BIN1 (direction)
-    PIN_IN2 = 6       # BIN2 (direction)
-    PIN_STBY = 23     # STBY (high = enabled)
+    PIN_PWM = 13      # PWMA (hardware PWM pin) — pin 33
+    PIN_IN1 = 12      # AIN1 (direction) — pin 32 (moved off GPIO5: dead breadboard jumper)
+    PIN_IN2 = 6       # AIN2 (direction) — pin 31
+    # STBY is hardwired to 3.3V (pin 17) on the bench build — the GPIO23 route had
+    # a dead jumper. Chip is always enabled; the GPIO23 write below is a harmless
+    # no-op. Rewire to a GPIO if you need software enable/disable.
+    PIN_STBY = 23     # STBY (not connected; hardwired 3.3V) — see note above
     PIN_ENC_A = None  # VERIFY — schematic only shows encoder B wired
     PIN_ENC_B = 24    # encoder ch B
     PWM_FREQUENCY_HZ = 1000  # VERIFY
@@ -52,8 +58,10 @@ class Tof:
     # Shared bus, same default address — enable each via XSHUT and reassign.
     # XSHUT GPIOs verified electrically on 2026-07-03 (matches Cirkit
     # schematic after the 4th wire moved from GPIO4 to GPIO22).
-    # Position labels confirmed by the hand-wave test on 2026-07-03.
-    XSHUT_PINS = {"front": 26, "left": 25, "right": 16, "rear": 22}
+    # Labels relabelled 2026-07-14 after sensors were physically repositioned
+    # (was front=26 left=25 rear=22; each faced the wrong way). Re-verify with a
+    # hand-wave test. Right was unchanged ("right is always right").
+    XSHUT_PINS = {"front": 22, "left": 26, "right": 16, "rear": 25}
     I2C_ADDRESSES = {"front": 0x30, "left": 0x31, "right": 0x32, "rear": 0x33}
     DISTANCE_MODE = 2        # 1=short (<=1.36m), 2=long (<=3.6m) — WRO walls need long
     TIMING_BUDGET_MS = 50    # per-sensor; 4 sensors ~ 20Hz effective loop rate

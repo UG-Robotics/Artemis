@@ -26,6 +26,7 @@ struct Sample { float r, g, b; bool set; };
 Sample ref[3];                       // 0=orange, 1=blue, 2=white
 const char *NAMES[3] = {"ORANGE", "BLUE", "WHITE/none"};
 bool liveClassify = true;
+bool ready = false;                  // hot-detect: keep retrying begin() until found
 
 void readNorm(float &r, float &g, float &b, uint16_t &c) {
   uint16_t rr, gg, bb, cc;
@@ -76,14 +77,20 @@ void printRefs() {
 
 void setup() {
   Serial.begin(9600);
-  if (!tcs.begin()) {
-    Serial.println("TCS34725 NOT found - check SDA->A4, SCL->A5, power, GND.");
-    while (1) delay(1000);
-  }
-  Serial.println("TCS34725 ready. keys: o=orange b=blue w=white p=print l=live");
+  Wire.begin();
+  Wire.setWireTimeout(25000, true);   // don't let a stuck bus hang us
+  Serial.println("TCS34725 test — Uno (hot-detect; Ctrl+C-safe)");
+  ready = tcs.begin();
+  if (ready) Serial.println("TCS34725 ready. keys: o=orange b=blue w=white p=print l=live");
 }
 
 void loop() {
+  if (!ready) {                       // wire it live; comes alive when connected
+    ready = tcs.begin();
+    if (ready) Serial.println("TCS34725 ready. keys: o=orange b=blue w=white p=print l=live");
+    else { Serial.println("  waiting for TCS34725 (check SDA->A4 SCL->A5 VIN GND)..."); delay(600); return; }
+  }
+
   if (Serial.available()) {
     char k = Serial.read();
     if (k == 'o') capture(0);
