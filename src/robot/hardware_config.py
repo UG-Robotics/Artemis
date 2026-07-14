@@ -89,11 +89,15 @@ class Imu:
     ZUPT_ACCEL_THRESH = 0.06  # g — ||accel|-1g| below this counts as "not moving"
 
 
-# Downward color sensor — TCS34725.
+# Downward color sensor — TCS34725/27 (this build reads ID 0x4d = TCS34727).
 class Color:
-    I2C_ADDRESS = 0x29   # VERIFY — clashes with the default ToF address
+    # 0x29 clashes with the VL53L1X ToF default, so the sensor lives on its own
+    # software I2C bus (i2c-gpio overlay, SDA=GPIO20 SCL=GPIO21) added to the Pi's
+    # /boot/firmware/config.txt on 2026-07-14. See [[project-open-challenge-tof]].
+    BUS_ID = 3                 # /dev/i2c-3 (the dedicated color bus)
+    I2C_ADDRESS = 0x29
     INTEGRATION_TIME_MS = 50   # VERIFY
-    GAIN = 4                   # VERIFY
+    GAIN = 4                   # 1 / 4 / 16 / 60
     THRESHOLDS = None          # VERIFY: calibrate orange/blue on the real mat
 
 
