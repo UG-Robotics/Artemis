@@ -36,24 +36,29 @@ class RealHardware:
     until we implement them on the Pi.
     """
 
-    def __init__(self, use_camera: bool = True):
+    def __init__(self, use_camera: bool = True, use_imu: bool = True,
+                 use_color: bool = True):
         self.motor = MotorDriver()
         self.servo = ServoDriver()
         self.tof = TofArray()
-        self.imu = ImuDriver()
-        self.color = ColorSensor()
+        # IMU and colour are optional so a ToF-only run (open challenge on the
+        # current build) doesn't construct or poll unhealthy hardware — the IMU
+        # is untrustworthy and the colour sensor isn't wired yet (2026-07-14).
+        self.imu = ImuDriver() if use_imu else None
+        self.color = ColorSensor() if use_color else None
         self.camera = Camera() if use_camera else None
 
     def read_sensors(self) -> SensorReading:
-        """Poll every sensor into one reading."""
+        """Poll every enabled sensor into one reading. Disabled sensors report
+        their neutral default (heading 0.0, no colour, no pillars)."""
         d = self.tof.read_all()
         return SensorReading(
             tof_front=d["front"],
             tof_rear=d["rear"],
             tof_left=d["left"],
             tof_right=d["right"],
-            imu_heading=self.imu.heading(),
-            color_detected=self.color.detect(),
+            imu_heading=self.imu.heading() if self.imu else 0.0,
+            color_detected=self.color.detect() if self.color else None,
             pillars_visible=self.camera.detect_pillars() if self.camera else [],
         )
 

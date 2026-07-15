@@ -16,7 +16,8 @@ Bench-verified quirks (Pi 3B+, adafruit-circuitpython-vl53l1x):
 
 import time
 
-from core.config import TOF_MAX_RANGE
+from core.config import TOF_MAX_RANGE, TOF_MEDIAN_WINDOW
+from core.tof_filter import TofMedianFilter
 from robot.hardware_config import Tof as TofConfig
 
 # Adafruit CircuitPython stack; import lazily so this loads off-Pi.
@@ -57,10 +58,13 @@ class TofArray:
 
     POSITIONS = ("front", "left", "right", "rear")
 
-    def __init__(self, config=TofConfig, require_all=True):
+    def __init__(self, config=TofConfig, require_all=True, median_window=TOF_MEDIAN_WINDOW):
         self.config = config
         self._sensors = {}
         self._last = {p: TOF_MAX_RANGE for p in self.POSITIONS}
+        # Median-filter each channel so a single dropped frame can't reach the
+        # controller. Shared with the sim (core.tof_filter) so both run the same code.
+        self._filter = TofMedianFilter(self.POSITIONS, window=median_window)
         if not _I2C_AVAILABLE:
             return
 
@@ -104,15 +108,19 @@ class TofArray:
         No target in range reads TOF_MAX_RANGE (the sim's convention). Between
         sensor updates (each sensor produces a reading every timing budget) the
         last known value is held, so callers can poll faster than the sensors.
+
+        Each new frame is pushed into a per-channel window and the reported value
+        is the window median, so an isolated spike (a lone 4000 among ~233s, or
+        the reverse) is discarded; a sustained change survives after it fills a
+        majority of the window.
         """
         for position, sensor in self._sensors.items():
             if not sensor.data_ready:
                 continue
             distance_cm = sensor.distance
             sensor.clear_interrupt()
-            self._last[position] = (
-                TOF_MAX_RANGE if distance_cm is None else distance_cm * 10.0
-            )
+            sample = TOF_MAX_RANGE if distance_cm is None else distance_cm * 10.0
+            self._last[position] = self._filter.update(position, sample)
         return dict(self._last)
 
     def close(self) -> None:

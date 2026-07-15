@@ -114,6 +114,24 @@ TOF_MIN_RANGE = 4          # 4mm min range
 TOF_ACCURACY = 1           # ±1mm
 TOF_BEAM_ANGLE = 4         # ~4 degree cone (approximate)
 TOF_COUNT = 4              # front, left, right, rear
+# VL53L1X occasionally drops a single frame to a spurious value (a no-target
+# read jumps to TOF_MAX_RANGE, e.g. 233,233,4000,234). De-noising = the outlier
+# gate below + an optional median (core/tof_filter.py). Sim regression sweep
+# (test_tof_noise.py, paired tracks, 10 seeds): gate-only beats every median
+# combination in every config — any median window adds lag that clips walls in
+# tight 600mm corridors (window 3 alone: 9/10 -> 0/10 valid on narrow when
+# stacked with the gate). So the median is DISABLED (window 1 = identity); the
+# gate does the spike rejection and CORNER_PERSIST_TICKS debounces the corner
+# trigger lag-free.
+TOF_MEDIAN_WINDOW = 1
+# Outlier gate: a sample further than TOF_MAX_JUMP from the current output is
+# physically impossible frame-to-frame (robot moves ~25mm/tick) and is rejected —
+# UNLESS it agrees with the immediately previous raw sample (a real level shift:
+# a wall edge passing legitimately jumps 250 -> 4000 in one frame), or the gate
+# has already rejected 2 in a row (escape valve for fast real ramps during
+# full-lock turns, where consecutive frames confirm neither the output nor each
+# other; without it the gate holds stale pre-turn values through the whole turn).
+TOF_MAX_JUMP = 150
 TOF_ANGLES = {             # pointing angle relative to robot heading (degrees)
     'front': 0,
     'left': -90,
@@ -149,6 +167,37 @@ KP_PILLAR = 0.08
 KD_PILLAR = 0.03
 KP_TURN = 0.06
 KD_TURN = 0.02
+
+# ToF-only wall-following open-challenge driver (core.wall_follow_controller).
+# The IMU-free fallback: no heading, no colour, no pose — just the four ToF
+# distances. Straights = PD centring between the side walls; corners = the front
+# wall closing, steer toward the open side until it reopens. Tune KP_WALL/KD_WALL
+# in the sim first (test_pd_tuning.py), then on the bench.
+#
+# A side ToF reading above SIDE_WALL_VALID counts as "no wall there" (a corner
+# opening), so centring falls back to single-wall following at WALL_SETPOINT.
+SIDE_WALL_VALID = 900          # mm — side reading above this = opening, not a wall
+WALL_SETPOINT = 250            # mm — target distance when following a single wall
+CORNER_TRIGGER_FRONT = 450     # mm — front wall this close = corner ahead, start turn.
+                               # 450 (not 400) compensates for CORNER_PERSIST_TICKS
+                               # delaying the trigger ~3 ticks: sim sweep at persist=3
+                               # gives narrow-track 10/10 clean at 450 vs 4/10 at 400.
+CORNER_PERSIST_TICKS = 3       # front must stay below the trigger this many consecutive
+                               # ticks before a corner fires — rejects single-frame ToF
+                               # dropout spikes (a stray near read) that would otherwise
+                               # false-trigger a turn. Sim-proven: without it, injected
+                               # dropouts push a 12-turn round to ~21 turns (0/5 valid);
+                               # with it, ~12 turns and 4-5/5 valid. Lag-free, unlike
+                               # widening the median filter. See core/tof_filter.py.
+CORNER_CLEAR_FRONT = 700       # mm — front reopened past this = turn complete
+TURN_STEER = MAX_STEERING_ANGLE  # deg — full lock through a corner (tighter arc so
+                                 # a 90° corner completes before the front reopens)
+TURN_MIN_TICKS = 8             # ticks to commit to a turn before the exit check
+TURN_EXIT_HOLD = 4             # consecutive "realigned" ticks needed to end a turn
+TURN_DEBOUNCE_TICKS = 45       # ticks (~1.5s at 30Hz) to ignore new corners after a
+                               # turn, so one physical corner isn't counted twice
+TURNS_TO_FINISH = 12           # 4 corners × 3 laps — run ends after this many turns
+FINISH_TOF_TOLERANCE = 200     # mm — front/rear match to the start signature = stop
 
 # Traffic-sign threading (obstacle). Red -> keep RIGHT (sign on our left),
 # green -> keep LEFT. Thread by a capped heading offset off the lane heading.
