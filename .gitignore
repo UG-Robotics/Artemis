@@ -42,3 +42,6 @@ models/reference/
 
 # Reference clones of other repos (not ours to track)
 external/
+
+# Full-res screen-recording originals stay local; compressed .mp4s are tracked
+video/*.mov
