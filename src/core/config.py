@@ -177,6 +177,32 @@ KD_TURN = 0.02
 # A side ToF reading above SIDE_WALL_VALID counts as "no wall there" (a corner
 # opening), so centring falls back to single-wall following at WALL_SETPOINT.
 SIDE_WALL_VALID = 900          # mm — side reading above this = opening, not a wall
+# Gyro-free heading estimation (core/tof_heading.py): heading error is recovered
+# from the least-squares slope of the side-ToF distances over this many ticks
+# (~0.33s at 30Hz — long enough that the ~1mm sensor noise averages below 1 deg
+# at cruise, short enough to act as a damping term).
+HEADING_WINDOW_TICKS = 10
+KP_HEADING_WF = 1.2            # deg steering per deg of estimated heading error.
+                               # Sim sweep (test_tof_noise.py): 0.6-1.2 = 10/10 valid,
+                               # 0 collisions in EVERY config incl. narrow+noisy
+                               # (0/10 without the heading term); >=2.0 over-damps.
+                               # 1.2 = mid-plateau, tolerant of the ±30% speed-estimate
+                               # error on the real robot (no encoder).
+
+# Vision heading (core/vision_heading.py) — wall-base slope from the wide camera.
+VISION_DARK_THRESHOLD = 90     # 8-bit grayscale below this = wall band (dark on
+                               # light mat; verify against real frames per venue)
+VISION_CHROMA_LIMIT = 25       # max-min channel spread for a "neutral" (wall) pixel;
+                               # rejects the navy lane line, which stays blue-tinted
+                               # even when dim enough to pass the darkness test
+VISION_MIN_COLUMNS = 60        # min detected wall-base columns for a valid fit
+VISION_FUSE_WEIGHT = 0.3       # weight of the camera heading when BOTH gyro-free
+                               # heading sources are live (ToF-rate estimate keeps
+                               # 0.7 — it's the precise one); vision alone carries
+                               # the ticks where the ToF estimator is blind
+VISION_HEADING_GAIN = 400.0    # deg heading per unit slope (rows/col) — PLACEHOLDER
+                               # until bench calibration (tape-protractor yaw sweep);
+                               # sign/zero are trustworthy, scale is not.
 WALL_SETPOINT = 250            # mm — target distance when following a single wall
 CORNER_TRIGGER_FRONT = 450     # mm — front wall this close = corner ahead, start turn.
                                # 450 (not 400) compensates for CORNER_PERSIST_TICKS

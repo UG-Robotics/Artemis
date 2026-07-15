@@ -26,3 +26,9 @@ class SensorReading:
     imu_heading: float = 0.0
     color_detected: Optional[str] = None
     pillars_visible: List[dict] = field(default_factory=list)
+    # Camera wall-base heading estimate in degrees (core/vision_heading.py),
+    # positive = nose toward the right wall; None when the camera is off, no
+    # wall base is in view, or the producer hasn't computed one this tick.
+    # Populated by whichever component owns the camera (only one Picamera2
+    # instance may exist — currently the web streamer); the sim leaves it None.
+    vision_heading: Optional[float] = None

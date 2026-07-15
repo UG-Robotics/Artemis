@@ -26,14 +26,18 @@ is present it confirms a corner, but nothing here depends on it.
 
 from enum import Enum, auto
 
+from core.tof_heading import TofHeadingEstimator
+
 from core.config import (
     CONTROL_HZ,
+    KP_HEADING_WF,
     CORNER_CLEAR_FRONT,
     CORNER_PERSIST_TICKS,
     CORNER_TRIGGER_FRONT,
     FINISH_TOF_TOLERANCE,
     KD_WALL,
     KP_WALL,
+    MAX_SPEED,
     ROUND_TIME,
     SIDE_WALL_VALID,
     SPEED_OPEN_CORNER,
@@ -43,6 +47,7 @@ from core.config import (
     TURN_MIN_TICKS,
     TURN_STEER,
     TURNS_TO_FINISH,
+    VISION_FUSE_WEIGHT,
     WALL_FOLLOW_MAX_STEER,
     WALL_SETPOINT,
 )
@@ -73,6 +78,11 @@ class WallFollowController:
         self._turn_clear_ticks = 0   # consecutive "realigned" ticks inside a turn
         self._corner_cooldown = 0    # ticks left before a new corner may trigger
         self._front_close_ticks = 0  # consecutive ticks the front has been < trigger
+        # Gyro-free heading from side-ToF rates; valid on straights only, so it
+        # is fed in DRIVING/FINISHING and reset around every turn.
+        self._heading = TofHeadingEstimator()
+        self._speed_cmd = 0.0        # last commanded speed fraction (v estimate)
+        self._dt = 1.0 / CONTROL_HZ
         self.track_width = track_width  # None -> ask the world each tick
 
         # Start-section ToF signature, snapshotted at launch, used to stop the run
@@ -87,6 +97,7 @@ class WallFollowController:
     def update(self, sensors, robot, track, dt: float):
         """Called at CONTROL_HZ. Same signature as Controller.update()."""
         self.elapsed_time += dt
+        self._dt = dt
         if self.track_width is None:
             # WallFollowController never reads pose, so x/y are unused here.
             self.track_width = track.get_local_track_width(0, 0)
@@ -115,6 +126,7 @@ class WallFollowController:
         self.start_tof_rear = sensors.tof_rear
         self._prev_center_err = 0.0
         robot.set_steering(0)
+        self._speed_cmd = SPEED_OPEN_CRUISE
         robot.set_speed(SPEED_OPEN_CRUISE)
         self.state = WFState.DRIVING
 
@@ -125,6 +137,7 @@ class WallFollowController:
         elif self._corner_ahead(sensors):
             self._begin_turn(sensors)
             return
+        self._speed_cmd = SPEED_OPEN_CRUISE
         robot.set_speed(SPEED_OPEN_CRUISE)
         robot.set_steering(self._wall_follow_steer(sensors))
 
@@ -137,6 +150,7 @@ class WallFollowController:
         ticks adds hysteresis so a single noisy frame doesn't end the turn early.
         """
         self._turn_ticks += 1
+        self._speed_cmd = SPEED_OPEN_CORNER
         robot.set_speed(SPEED_OPEN_CORNER)
         robot.set_steering(self.turn_dir * TURN_STEER)
 
@@ -154,6 +168,7 @@ class WallFollowController:
         if self._turn_clear_ticks >= TURN_EXIT_HOLD:
             self.turns += 1
             self._prev_center_err = 0.0
+            self._heading.reset()
             self._corner_cooldown = TURN_DEBOUNCE_TICKS  # one corner = one turn
             if self.turns >= TURNS_TO_FINISH:
                 self.state = WFState.FINISHING
@@ -168,6 +183,7 @@ class WallFollowController:
         elif self._corner_ahead(sensors):
             self._begin_turn(sensors)
             return
+        self._speed_cmd = SPEED_OPEN_CORNER
         robot.set_speed(SPEED_OPEN_CORNER)
         robot.set_steering(self._wall_follow_steer(sensors))
 
@@ -181,12 +197,20 @@ class WallFollowController:
     # -- steering / detection ---------------------------------------------
 
     def _wall_follow_steer(self, sensors):
-        """PD steering to stay centred (or hold a setpoint against one wall).
+        """P steering on lateral offset + damping from estimated heading.
 
         Sign convention matches the gyro controller's trim term: positive
         steering = turn right. tof_right is the gap to the right wall, so
         (tof_right - tof_left) > 0 means more room on the right => we're hugging
         the left => steer right to recover.
+
+        The damping term is the gyro-free heading estimate (side-ToF distance
+        rates, core/tof_heading.py): a heading error toward the right wall gets
+        a proportional left steer, which is what actually separates "off-centre
+        but parallel" (P term only) from "centred but angled" (heading term
+        only) — the ambiguity a single ToF per side cannot resolve. Until the
+        estimator has a full window (start of a straight), the old KD on the
+        raw differential stands in.
         """
         left, right = sensors.tof_left, sensors.tof_right
         left_valid = left < SIDE_WALL_VALID
@@ -203,7 +227,28 @@ class WallFollowController:
 
         d_err = err - self._prev_center_err
         self._prev_center_err = err
-        steer = KP_WALL * err + KD_WALL * d_err
+
+        tof_heading = self._heading.update(
+            left, right, left_valid, right_valid,
+            self._speed_cmd * MAX_SPEED, self._dt,
+        )
+        # Fuse the two gyro-free heading sources. The ToF-rate estimate is the
+        # precise one, so it dominates; the camera wall-base estimate is
+        # absolute and needs no motion, so it carries the ticks where the ToF
+        # estimator is blind (window refilling after a turn, a side open).
+        vision = getattr(sensors, "vision_heading", None)
+        if tof_heading is not None and vision is not None:
+            heading = (1 - VISION_FUSE_WEIGHT) * tof_heading + VISION_FUSE_WEIGHT * vision
+        elif tof_heading is not None:
+            heading = tof_heading
+        else:
+            heading = vision  # may be None
+
+        if heading is not None:
+            # heading > 0 = nose toward the right wall -> steer left.
+            steer = KP_WALL * err - KP_HEADING_WF * heading
+        else:
+            steer = KP_WALL * err + KD_WALL * d_err
         return _clamp(steer, -WALL_FOLLOW_MAX_STEER, WALL_FOLLOW_MAX_STEER)
 
     def _corner_ahead(self, sensors):
@@ -231,6 +276,7 @@ class WallFollowController:
         self._turn_ticks = 0
         self._turn_clear_ticks = 0
         self._front_close_ticks = 0
+        self._heading.reset()
         self.state = WFState.TURNING
 
     # -- introspection (telemetry / debugging) ----------------------------
