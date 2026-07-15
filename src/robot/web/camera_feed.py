@@ -5,6 +5,8 @@ on a dev machine. Both expose frames() -> generator of JPEG bytes.
 """
 
 import io
+import os
+import threading
 import time
 
 from robot.hardware_config import Camera as CameraConfig
@@ -60,7 +62,14 @@ class PlaceholderSource:
 
 
 class PiCameraSource:
-    """OV5647 via picamera2, JPEG-encoded per frame."""
+    """OV5647 via picamera2, JPEG-encoded by one shared capture thread.
+
+    A single background thread captures + encodes into a latest-frame slot; every
+    connected client streams that slot. This decouples capture rate from client
+    count and — crucially — never runs two concurrent `capture_array()` calls on
+    the one Picamera2 (which deadlocks and freezes the stream when a browser
+    reconnects or a second tab opens).
+    """
 
     def __init__(self, size=(640, 480), fps=20):
         from PIL import Image  # encode frames; Pillow is light on the Pi
@@ -71,23 +80,61 @@ class PiCameraSource:
         # and any downstream detection see an upright frame at zero CPU cost.
         transform = Transform(hflip=int(CameraConfig.HFLIP),
                               vflip=int(CameraConfig.VFLIP))
+        # picamera2 format names are byte-order and REVERSED from what they read:
+        # "RGB888" delivers a BGR numpy array, "BGR888" delivers RGB. PIL/JPEG want
+        # RGB, so request BGR888 — otherwise red<->blue swap (skin renders blue).
         self.cam.configure(self.cam.create_video_configuration(
-            main={"size": size, "format": "RGB888"}, transform=transform))
+            main={"size": size, "format": "BGR888"}, transform=transform))
         self.cam.start()
         self.period = 1.0 / fps
 
-    def frames(self):
-        while True:
+        self._latest = None
+        self._seq = 0                     # bumped per frame so clients detect "new"
+        self._cond = threading.Condition()
+        self._running = True
+        self._thread = threading.Thread(target=self._capture_loop, daemon=True)
+        self._thread.start()
+
+    def _capture_loop(self):
+        while self._running:
             arr = self.cam.capture_array()
             buf = io.BytesIO()
             self._Image.fromarray(arr).save(buf, format="JPEG", quality=70)
-            yield buf.getvalue()
+            with self._cond:
+                self._latest = buf.getvalue()
+                self._seq += 1
+                self._cond.notify_all()
             time.sleep(self.period)
+
+    def frames(self):
+        last_seq = -1
+        while True:
+            with self._cond:
+                # Wait for a newer frame; time out periodically so a stalled
+                # capture doesn't wedge the client connection silently.
+                self._cond.wait_for(lambda: self._seq != last_seq, timeout=2.0)
+                frame, last_seq = self._latest, self._seq
+            if frame is not None:
+                yield frame
+
+    def close(self):
+        self._running = False
+        try:
+            self.cam.stop()
+        except Exception:
+            pass
 
 
 def make_camera_source(teleop=None):
-    """Pi camera if available, else the dev placeholder. Needs Pillow for the latter."""
-    if _PI_CAM:
+    """Pi camera if available, else the dev placeholder. Needs Pillow for the latter.
+
+    Set ARTEMIS_NO_CAMERA=1 to skip the Pi camera entirely and use the placeholder.
+    Needed when the OV5647/libcamera stack wedges on init: a hung driver call sits
+    in uninterruptible I/O and never raises, so the try/except below can't fall
+    back — it just blocks the whole app before it binds the web port.
+    """
+    no_cam = os.environ.get("ARTEMIS_NO_CAMERA", "").lower() in ("1", "true", "yes")
+    if _PI_CAM and not no_cam:
         try:
             return PiCameraSource()
         except Exception as exc:

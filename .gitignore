@@ -39,3 +39,6 @@ models/reference/
 # Robot credentials / host config — copy .env.robot.example and fill in locally.
 .env
 .env.robot
+
+# Reference clones of other repos (not ours to track)
+external/

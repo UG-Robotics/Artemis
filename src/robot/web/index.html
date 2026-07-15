@@ -88,15 +88,21 @@ function intents() {
   const steer = (pressed.right ? 1 : 0) + (pressed.left ? -1 : 0);
   return {throttle, steer};
 }
-let inflight = false;
-async function send(extra) {
-  const body = Object.assign(intents(), {speed_scale: speedScale}, extra || {});
-  if (inflight) return;
+// Single-flight with coalescing: never DROP a command while one is in flight —
+// mark it pending and fire the latest intent as soon as the current one returns.
+// (Dropping was why pressing e.g. left while forward was held didn't register.)
+let inflight = false, pending = false;
+async function send() {
+  if (inflight) { pending = true; return; }
   inflight = true;
   try {
-    const r = await fetch('/control', {method:'POST', headers:{'Content-Type':'application/json'},
-                                       body: JSON.stringify(body)});
-    render(await r.json());
+    do {
+      pending = false;
+      const body = Object.assign(intents(), {speed_scale: speedScale});
+      const r = await fetch('/control', {method:'POST', headers:{'Content-Type':'application/json'},
+                                         body: JSON.stringify(body)});
+      render(await r.json());
+    } while (pending);  // an intent changed mid-request — send the newest one
   } catch (e) { setStatus('disconnected', true); }
   finally { inflight = false; }
 }
@@ -149,6 +155,11 @@ addEventListener('blur', estop);
 document.addEventListener('visibilitychange', () => { if (document.hidden) estop(); });
 setInterval(() => { const {throttle, steer} = intents(); if (throttle || steer) send(); }, 200);
 send();
+
+// camera: reconnect the MJPEG stream if it errors or stalls (cache-bust the URL)
+const camImg = document.querySelector('.cam img');
+function reloadCam() { camImg.src = '/stream.mjpg?ts=' + Date.now(); }
+camImg.addEventListener('error', () => setTimeout(reloadCam, 800));
 
 // live sensor readout (ToFs + IMU)
 function cell(id, v, unit) {

@@ -86,6 +86,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(f"Content-Length: {len(jpg)}\r\n\r\n".encode())
                 self.wfile.write(jpg)
                 self.wfile.write(b"\r\n")
+                self.wfile.flush()  # push each frame out now, don't let it buffer
         except (BrokenPipeError, ConnectionResetError):
             pass  # client closed the stream
 
