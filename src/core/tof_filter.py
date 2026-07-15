@@ -17,7 +17,8 @@ Two stages, both per channel:
    window refills.
 
    Escape valve: the gate never rejects more than MAX_CONSECUTIVE_REJECTS
-   samples in a row. During a full-lock turn the true distance can ramp faster
+   samples in a row (3: double spikes happen every ~13s per channel at the
+   bench dropout rate and must NOT force through; triples are ~weekly). During a full-lock turn the true distance can ramp faster
    than TOF_MAX_JUMP every frame (the ray sweeps along a wall), so consecutive
    samples confirm neither the output nor each other; without the valve the
    gate would hold a stale pre-turn reading for the whole ramp (sim: 10/10 ->
@@ -39,7 +40,7 @@ from core.config import TOF_MAX_JUMP, TOF_MEDIAN_WINDOW
 class TofMedianFilter:
     """Outlier gate + rolling median per named channel (front/left/right/rear)."""
 
-    MAX_CONSECUTIVE_REJECTS = 2
+    MAX_CONSECUTIVE_REJECTS = 3
 
     def __init__(self, positions, window: int = TOF_MEDIAN_WINDOW,
                  max_jump: float = TOF_MAX_JUMP):

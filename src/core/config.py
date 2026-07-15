@@ -218,7 +218,20 @@ CORNER_PERSIST_TICKS = 3       # front must stay below the trigger this many con
 CORNER_CLEAR_FRONT = 700       # mm — front reopened past this = turn complete
 TURN_STEER = MAX_STEERING_ANGLE  # deg — full lock through a corner (tighter arc so
                                  # a 90° corner completes before the front reopens)
-TURN_MIN_TICKS = 8             # ticks to commit to a turn before the exit check
+# Turn progress is dead-reckoned kinematically (no gyro, no encoder): the arc
+# swept at commanded steer/speed is omega = v * tan(steer) / wheelbase. The exit
+# geometry check only ARMs inside [TURN_ARC_MIN, TURN_ARC_MAX]; at TURN_ARC_MAX
+# the turn force-exits regardless (geometry alone under-constrains exit heading
+# in wide corridors: ground-truth traces showed 150-330 deg spins).
+TURN_ARC_MIN = 75              # deg — earliest the exit geometry may end a turn
+TURN_ARC_MAX = 115             # deg — force exit; DRIVING recentres from here
+TURN_MIN_TICKS = 24            # legacy tick floor (kept for the sim viewer HUD)
+SIDE_SUM_REALIGNED = 1300      # mm — left+right at most this = back in a corridor
+                               # (600-1000mm wide + sensor offsets); the mid-corner
+                               # diagonal glimpse reads the open mouth (>1500) on one
+                               # side. Replaces the old per-side < SIDE_WALL_VALID
+                               # test, which a CENTRED robot in a 1000mm corridor
+                               # could never satisfy -> endless spin past 90 deg
 TURN_EXIT_HOLD = 4             # consecutive "realigned" ticks needed to end a turn
 TURN_DEBOUNCE_TICKS = 45       # ticks (~1.5s at 30Hz) to ignore new corners after a
                                # turn, so one physical corner isn't counted twice

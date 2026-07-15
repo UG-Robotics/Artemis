@@ -65,14 +65,16 @@ class TofHeadingEstimator:
         self._t += dt
         # A side going invalid mid-window means the geometry changed (opening),
         # not the heading — restart that side's history.
-        if left_valid:
-            self._left.append((self._t, d_left))
-        else:
-            self._left.clear()
-        if right_valid:
-            self._right.append((self._t, d_right))
-        else:
-            self._right.clear()
+        for hist, dist, valid in ((self._left, d_left, left_valid),
+                                  (self._right, d_right, right_valid)):
+            if not valid:
+                hist.clear()
+                continue
+            # A jump a wall can't make in one tick (leaked spike or a wall
+            # edge) would poison the slope fit — restart the window instead.
+            if hist and abs(dist - hist[-1][1]) > 300:
+                hist.clear()
+            hist.append((self._t, dist))
 
         if speed_mms is None or speed_mms < 1e-6:
             return None

@@ -24,6 +24,7 @@ Colour is used only as an OPTIONAL cross-check: when `sensors.color_detected`
 is present it confirms a corner, but nothing here depends on it.
 """
 
+import math
 from enum import Enum, auto
 
 from core.tof_heading import TofHeadingEstimator
@@ -40,16 +41,19 @@ from core.config import (
     MAX_SPEED,
     ROUND_TIME,
     SIDE_WALL_VALID,
+    SIDE_SUM_REALIGNED,
     SPEED_OPEN_CORNER,
     SPEED_OPEN_CRUISE,
+    TURN_ARC_MAX,
+    TURN_ARC_MIN,
     TURN_DEBOUNCE_TICKS,
     TURN_EXIT_HOLD,
-    TURN_MIN_TICKS,
     TURN_STEER,
     TURNS_TO_FINISH,
     VISION_FUSE_WEIGHT,
     WALL_FOLLOW_MAX_STEER,
     WALL_SETPOINT,
+    WHEELBASE,
 )
 
 
@@ -77,6 +81,8 @@ class WallFollowController:
         self._turn_ticks = 0
         self._turn_clear_ticks = 0   # consecutive "realigned" ticks inside a turn
         self._corner_cooldown = 0    # ticks left before a new corner may trigger
+        self._turn_arc = 0.0         # dead-reckoned degrees swept in this turn
+        self._hold_dist = None       # single-wall mode: distance being held
         self._front_close_ticks = 0  # consecutive ticks the front has been < trigger
         # Gyro-free heading from side-ToF rates; valid on straights only, so it
         # is fed in DRIVING/FINISHING and reset around every turn.
@@ -120,14 +126,25 @@ class WallFollowController:
 
     # -- states ------------------------------------------------------------
 
+    START_SETTLE_TICKS = 8
+
     def _handle_starting(self, sensors, robot):
-        """Snapshot the start signature and begin driving."""
-        self.start_tof_front = sensors.tof_front
-        self.start_tof_rear = sensors.tof_rear
-        self._prev_center_err = 0.0
+        """Let the ToF filter warm up, then snapshot the start signature.
+
+        The signature (front/rear at launch) is what stops the run in the right
+        place; snapshotting it from the very first reading risks baking a
+        dropout spike into the finish condition (premature stops seen in noisy
+        sim runs). The robot starts rolling immediately — only the snapshot
+        waits."""
         robot.set_steering(0)
         self._speed_cmd = SPEED_OPEN_CRUISE
         robot.set_speed(SPEED_OPEN_CRUISE)
+        self._start_ticks = getattr(self, '_start_ticks', 0) + 1
+        if self._start_ticks < self.START_SETTLE_TICKS:
+            return
+        self.start_tof_front = sensors.tof_front
+        self.start_tof_rear = sensors.tof_rear
+        self._prev_center_err = 0.0
         self.state = WFState.DRIVING
 
     def _handle_driving(self, sensors, robot):
@@ -153,19 +170,35 @@ class WallFollowController:
         self._speed_cmd = SPEED_OPEN_CORNER
         robot.set_speed(SPEED_OPEN_CORNER)
         robot.set_steering(self.turn_dir * TURN_STEER)
+        # Dead-reckoned arc: omega = v * tan(steer) / wheelbase (bicycle model,
+        # commanded values — no gyro, no encoder). Good to ~±20%, which the
+        # [TURN_ARC_MIN, TURN_ARC_MAX] window absorbs.
+        v = self._speed_cmd * MAX_SPEED
+        omega = math.degrees(v * math.tan(math.radians(TURN_STEER)) / WHEELBASE)
+        self._turn_arc += omega * self._dt
 
-        # Both side walls back in range = parallel in the new corridor. Requiring
-        # both (not either) rejects the mid-corner diagonal glimpse, where one
-        # side is still the open corner mouth, so a 90° corner isn't cut into two.
-        both_sides_back = (sensors.tof_left < SIDE_WALL_VALID
-                           and sensors.tof_right < SIDE_WALL_VALID)
-        realigned = sensors.tof_front > CORNER_CLEAR_FRONT and both_sides_back
-        if self._turn_ticks >= TURN_MIN_TICKS and realigned:
+        # Realigned = the side readings again SUM to a corridor width. The sum
+        # is width-agnostic (600-1000mm sections all pass), unlike the old
+        # per-side < SIDE_WALL_VALID test, which a centred robot in a 1000mm
+        # corridor could never satisfy — it kept spinning past 90° and
+        # ping-ponged down the same corridor (found via ground-truth score
+        # tracing). The mid-corner diagonal glimpse still fails the sum: the
+        # open corner mouth reads >1500 on one side.
+        sides_sum_ok = (sensors.tof_left + sensors.tof_right) < SIDE_SUM_REALIGNED
+        realigned = sensors.tof_front > CORNER_CLEAR_FRONT and sides_sum_ok
+        if self._turn_arc >= TURN_ARC_MIN and realigned:
             self._turn_clear_ticks += 1
         else:
             self._turn_clear_ticks = 0
 
-        if self._turn_clear_ticks >= TURN_EXIT_HOLD:
+        # KNOWN LIMIT: an arc-cap force-exit with the front still blocked can
+        # re-trigger the same physical corner after the cooldown and count it
+        # twice (~15% of noisy runs finish one straight early, 22 sections
+        # instead of 24). Requiring geometry-confirmed exits to count was tried
+        # and is WORSE (wide corridors rarely confirm -> turns never reach 12).
+        # The real fix is counting corners by the camera seeing the orange/blue
+        # corner lines, not ToF geometry.
+        if self._turn_clear_ticks >= TURN_EXIT_HOLD or self._turn_arc >= TURN_ARC_MAX:
             self.turns += 1
             self._prev_center_err = 0.0
             self._heading.reset()
@@ -216,12 +249,24 @@ class WallFollowController:
         left_valid = left < SIDE_WALL_VALID
         right_valid = right < SIDE_WALL_VALID
 
+        # Single-wall mode holds the distance we HAD when the other side opened
+        # (clamped to a sane band), not a fixed setpoint: pulling to
+        # WALL_SETPOINT=250 from the centre of a 1000mm corridor is a violent
+        # lateral manoeuvre right before every corner (openings in the open
+        # challenge only ever mean a corner is near). In a 600mm corridor
+        # centre and setpoint nearly coincide, which is why this only hurt on
+        # wide tracks (ground-truth score traces).
         if left_valid and right_valid:
             err = right - left
+            self._hold_dist = None
         elif left_valid:                      # right side is an opening: hold off left
-            err = WALL_SETPOINT - left
+            if self._hold_dist is None:
+                self._hold_dist = _clamp(left, 200, 500)
+            err = self._hold_dist - left
         elif right_valid:                     # left side is an opening: hold off right
-            err = right - WALL_SETPOINT
+            if self._hold_dist is None:
+                self._hold_dist = _clamp(right, 200, 500)
+            err = right - self._hold_dist
         else:
             err = 0.0                         # both open (mid-corner mouth): go straight
 
@@ -274,6 +319,7 @@ class WallFollowController:
             # at a corner; the inside stays close).
             self.turn_dir = 1 if sensors.tof_right >= sensors.tof_left else -1
         self._turn_ticks = 0
+        self._turn_arc = 0.0
         self._turn_clear_ticks = 0
         self._front_close_ticks = 0
         self._heading.reset()
