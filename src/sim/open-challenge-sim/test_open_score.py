@@ -80,7 +80,15 @@ def run_scored(section_widths, direction, start_section, seed, noise, p_spike):
             if not in_collision:
                 collisions += 1
                 in_collision = True
-            dx, dy = ccx - robot.x, ccy - robot.y
+            # Same nudge as test_headless: inner-island hits push OUTWARD (away
+            # from the island centre) back into the corridor; outer-wall hits
+            # push inward. Always pushing to the track centre shoved inner-wall
+            # collisions INTO the island, where the robot stayed stuck.
+            irx1, iry1, irx2, iry2 = track.inner_rect
+            if irx1 <= robot.x <= irx2 and iry1 <= robot.y <= iry2:
+                dx, dy = robot.x - ccx, robot.y - ccy
+            else:
+                dx, dy = ccx - robot.x, ccy - robot.y
             dd = max(1, math.hypot(dx, dy))
             robot.x += dx / dd * 20
             robot.y += dy / dd * 20

@@ -33,6 +33,7 @@ from core.config import (
     CONTROL_HZ,
     KP_HEADING_WF,
     CORNER_CLEAR_FRONT,
+    CORNER_OPEN_SIDE,
     CORNER_PERSIST_TICKS,
     CORNER_TRIGGER_FRONT,
     FINISH_TOF_TOLERANCE,
@@ -42,6 +43,8 @@ from core.config import (
     ROUND_TIME,
     SIDE_WALL_VALID,
     SIDE_SUM_REALIGNED,
+    SILENT_CORNER_ARC,
+    SILENT_CORNER_DECAY,
     SPEED_OPEN_CORNER,
     SPEED_OPEN_CRUISE,
     TURN_ARC_MAX,
@@ -82,6 +85,7 @@ class WallFollowController:
         self._turn_clear_ticks = 0   # consecutive "realigned" ticks inside a turn
         self._corner_cooldown = 0    # ticks left before a new corner may trigger
         self._turn_arc = 0.0         # dead-reckoned degrees swept in this turn
+        self._drive_arc = 0.0        # leaky steering integral while DRIVING
         self._hold_dist = None       # single-wall mode: distance being held
         self._front_close_ticks = 0  # consecutive ticks the front has been < trigger
         # Gyro-free heading from side-ToF rates; valid on straights only, so it
@@ -156,7 +160,31 @@ class WallFollowController:
             return
         self._speed_cmd = SPEED_OPEN_CRUISE
         robot.set_speed(SPEED_OPEN_CRUISE)
-        robot.set_steering(self._wall_follow_steer(sensors))
+        steer = self._wall_follow_steer(sensors)
+        robot.set_steering(steer)
+        self._track_silent_corner(steer)
+
+    def _track_silent_corner(self, steer):
+        """Count a corner the wall-follower steered around without triggering.
+
+        Hold-dist mode happily tracks the outer wall around a 90 deg bend (seen
+        in traces: 22s between turn events = two straights + an uncounted
+        corner, so FINISHING armed late and the stop signature matched in the
+        wrong straight). A leaky integral of the commanded steering stays near
+        zero on straights (corrections are symmetric) but accumulates the bend.
+        """
+        v = self._speed_cmd * MAX_SPEED
+        self._drive_arc = (self._drive_arc * SILENT_CORNER_DECAY
+                           + math.degrees(v * math.tan(math.radians(steer))
+                                          / WHEELBASE) * self._dt)
+        if self.turn_dir != 0 and self._drive_arc * self.turn_dir >= SILENT_CORNER_ARC:
+            self.turns += 1
+            self._drive_arc = 0.0
+            self._prev_center_err = 0.0
+            self._heading.reset()
+            self._corner_cooldown = TURN_DEBOUNCE_TICKS
+            if self.turns >= TURNS_TO_FINISH:
+                self.state = WFState.FINISHING
 
     def _handle_turning(self, sensors, robot):
         """Hold a corner-ward steer until the corner is genuinely behind us.
@@ -218,7 +246,9 @@ class WallFollowController:
             return
         self._speed_cmd = SPEED_OPEN_CORNER
         robot.set_speed(SPEED_OPEN_CORNER)
-        robot.set_steering(self._wall_follow_steer(sensors))
+        steer = self._wall_follow_steer(sensors)
+        robot.set_steering(steer)
+        self._track_silent_corner(steer)
 
         if self.start_tof_front is not None:
             front_ok = abs(sensors.tof_front - self.start_tof_front) < FINISH_TOF_TOLERANCE
@@ -310,7 +340,12 @@ class WallFollowController:
             self._front_close_ticks += 1
         else:
             self._front_close_ticks = 0
-        return self._front_close_ticks >= CORNER_PERSIST_TICKS
+        # A real corner also shows its mouth: one side reads clear across the
+        # track. Without this, a heading excursion that points the front ToF at
+        # a side wall fires a phantom corner mid-straight (instrumented: real
+        # triggers >= 2400 on the open side, phantoms <= 1360).
+        mouth_open = max(sensors.tof_left, sensors.tof_right) > CORNER_OPEN_SIDE
+        return self._front_close_ticks >= CORNER_PERSIST_TICKS and mouth_open
 
     def _begin_turn(self, sensors):
         """Enter TURNING, locking the loop's turn direction on the first corner."""
@@ -320,6 +355,7 @@ class WallFollowController:
             self.turn_dir = 1 if sensors.tof_right >= sensors.tof_left else -1
         self._turn_ticks = 0
         self._turn_arc = 0.0
+        self._drive_arc = 0.0
         self._turn_clear_ticks = 0
         self._front_close_ticks = 0
         self._heading.reset()

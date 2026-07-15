@@ -215,6 +215,15 @@ CORNER_PERSIST_TICKS = 3       # front must stay below the trigger this many con
                                # dropouts push a 12-turn round to ~21 turns (0/5 valid);
                                # with it, ~12 turns and 4-5/5 valid. Lag-free, unlike
                                # widening the median filter. See core/tof_filter.py.
+CORNER_OPEN_SIDE = 1800        # mm — a REAL corner trigger also sees the corner
+                               # mouth: one side reads clear across the track
+                               # (>=2400 in every instrumented trigger, all widths,
+                               # both directions). A phantom trigger — the front ToF
+                               # catching a side wall diagonally after a heading
+                               # excursion — has both walls present (max side
+                               # <=1360 measured). Phantoms double-counted corners
+                               # (premature finish) and caused the noisy-run
+                               # collisions.
 CORNER_CLEAR_FRONT = 700       # mm — front reopened past this = turn complete
 TURN_STEER = MAX_STEERING_ANGLE  # deg — full lock through a corner (tighter arc so
                                  # a 90° corner completes before the front reopens)
@@ -224,8 +233,22 @@ TURN_STEER = MAX_STEERING_ANGLE  # deg — full lock through a corner (tighter a
 # the turn force-exits regardless (geometry alone under-constrains exit heading
 # in wide corridors: ground-truth traces showed 150-330 deg spins).
 TURN_ARC_MIN = 75              # deg — earliest the exit geometry may end a turn
-TURN_ARC_MAX = 115             # deg — force exit; DRIVING recentres from here
+TURN_ARC_MAX = 95              # deg — force exit; DRIVING recentres from here.
+                               # The dead-reckoned arc overestimates true rotation
+                               # (servo slew lag), so 115 produced real ~25 deg
+                               # overshoots whose recovery lost the race to the
+                               # inner wall in 600mm corridors (wall-grind stalls).
+                               # Sweep: 95 -> 39/40 perfect noisy runs vs 31/40 at 115
 TURN_MIN_TICKS = 24            # legacy tick floor (kept for the sim viewer HUD)
+SILENT_CORNER_ARC = 60         # deg — dead-reckoned steering accumulated in DRIVING
+                               # (leaky, ~7s time constant) beyond this in the turn
+                               # direction = the wall-follower rounded a corner
+                               # WITHOUT the front trigger firing (hold-dist mode
+                               # tracks the outer wall around the bend). Count it,
+                               # or the finish arms a corner late and the stop
+                               # signature matches in the wrong straight.
+SILENT_CORNER_DECAY = 0.995    # per-tick leak on the DRIVING arc accumulator, so
+                               # symmetric straight-line PD corrections wash out
 SIDE_SUM_REALIGNED = 1300      # mm — left+right at most this = back in a corridor
                                # (600-1000mm wide + sensor offsets); the mid-corner
                                # diagonal glimpse reads the open mouth (>1500) on one
@@ -233,8 +256,14 @@ SIDE_SUM_REALIGNED = 1300      # mm — left+right at most this = back in a corr
                                # test, which a CENTRED robot in a 1000mm corridor
                                # could never satisfy -> endless spin past 90 deg
 TURN_EXIT_HOLD = 4             # consecutive "realigned" ticks needed to end a turn
-TURN_DEBOUNCE_TICKS = 45       # ticks (~1.5s at 30Hz) to ignore new corners after a
-                               # turn, so one physical corner isn't counted twice
+TURN_DEBOUNCE_TICKS = 90       # ticks (~3s at 30Hz) to ignore new corners after a
+                               # turn, so one physical corner isn't counted twice.
+                               # 3s is still < half the shortest corner-to-corner
+                               # time (~9s observed; >5s worst case), and covers the
+                               # post-force-exit window where the heading is still
+                               # settling and a side ToF can see back through the
+                               # corner mouth just exited (phantom re-trigger seen
+                               # 1.7s after exit with the old 1.5s debounce)
 TURNS_TO_FINISH = 12           # 4 corners × 3 laps — run ends after this many turns
 FINISH_TOF_TOLERANCE = 200     # mm — front/rear match to the start signature = stop
 
