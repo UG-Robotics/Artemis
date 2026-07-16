@@ -76,5 +76,7 @@ class CameraWorker:
         if self.available:
             try:
                 self._cam.stop()
+                self._cam.close()  # release the device — stop() alone keeps it
+                                   # acquired and the next owner gets "busy"
             except Exception:
                 pass

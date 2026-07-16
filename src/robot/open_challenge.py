@@ -209,6 +209,18 @@ def run_gyro(track_width: float, wait_button: bool, direction: int) -> None:
               f"sections={controller.sections_passed} t={controller.elapsed_time:.1f}s")
 
 
+def _web_app_running() -> bool:
+    """True if artemis-web answers on :8000 — it owns the camera AND the ToFs
+    (constructing our own TofArray would reset them under it, and two owners
+    corrupt reads mid-run), so competition runs must not start alongside it."""
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", 8000), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="WRO open-challenge run.")
     parser.add_argument("--mode", choices=("tof", "fusion", "imu"), default="tof",
@@ -221,6 +233,10 @@ def main() -> None:
     parser.add_argument("--direction", choices=("cw", "ccw"),
                         help="imu mode only: driving direction (sets corner-entry colour)")
     args = parser.parse_args()
+
+    if _web_app_running():
+        parser.error("artemis-web is running — it owns the camera and ToFs. "
+                     "Stop it first: sudo systemctl stop artemis-web")
 
     if args.mode == "imu":
         if not args.direction:
