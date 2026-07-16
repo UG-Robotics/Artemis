@@ -92,7 +92,8 @@ class Imu:
 class ImuLsm:
     """LSM6DSOX (bench-verified genuine 2026-07-16: WHO_AM_I 0x6C at 0x6A)."""
     I2C_ADDRESS = 0x6A   # 0x6B if SA0 pulled high
-    GYRO_Z_SIGN = 1      # flip to -1 if heading runs backwards once mounted. VERIFY.
+    GYRO_Z_SIGN = -1     # VERIFIED 2026-07-17 via robot.turn90: as mounted, a
+                         # commanded right turn swept -90.9 raw, so Z is flipped
     GYRO_Z_BIAS = 0.0    # deg/s at rest; overwritten by the startup calibration
     CALIB_SAMPLES = 600  # stationary samples averaged at startup
     ZUPT_GYRO_THRESH = Imu.ZUPT_GYRO_THRESH
