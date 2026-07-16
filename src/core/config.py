@@ -196,6 +196,11 @@ VISION_CHROMA_LIMIT = 25       # max-min channel spread for a "neutral" (wall) p
                                # rejects the navy lane line, which stays blue-tinted
                                # even when dim enough to pass the darkness test
 VISION_MIN_COLUMNS = 60        # min detected wall-base columns for a valid fit
+# Corner-line detection (core/vision_lines.py) — camera replaces the colour sensor.
+LINE_CHROMA_MARGIN = 30        # min R-B (orange) / B-R (blue) channel separation
+LINE_MIN_PIXELS = 250          # min matching pixels in the lower-frame ROI to call
+                               # a line (at 640x480 a line ~1m ahead spans far more;
+                               # this floor rejects speckle)
 VISION_FUSE_WEIGHT = 0.3       # weight of the camera heading when BOTH gyro-free
                                # heading sources are live (ToF-rate estimate keeps
                                # 0.7 — it's the precise one); vision alone carries

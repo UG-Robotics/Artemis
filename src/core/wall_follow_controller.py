@@ -153,6 +153,13 @@ class WallFollowController:
 
     def _handle_driving(self, sensors, robot):
         """PD-centre on the straight; hand off to TURNING when a corner is seen."""
+        # Direction from the first corner line when a colour source exists
+        # (camera line detection or the sim's mat): WRO layout — orange met
+        # first = clockwise = right turns, blue first = counter-clockwise.
+        # Rule-guaranteed, so it pre-empts the geometric more-open-side guess
+        # at the first corner; the geometry remains the no-camera fallback.
+        if self.turn_dir == 0 and sensors.color_detected in ('orange', 'blue'):
+            self.turn_dir = 1 if sensors.color_detected == 'orange' else -1
         if self._corner_cooldown > 0:
             self._corner_cooldown -= 1
         elif self._corner_ahead(sensors):
