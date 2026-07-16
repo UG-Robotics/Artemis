@@ -1,25 +1,26 @@
-"""IMU heading from an MPU6050.
+"""IMU heading — LSM6DSOX preferred, MPU6050 fallback.
 
 The controller steers toward cardinals and counts turns off the heading, so it
-needs a stable angle in degrees [0, 360). The MPU6050 is 6-axis (no magnetometer)
-so yaw has no absolute reference and the gyro-Z integration drifts; this driver
-attacks that at the source (see docs/imu-accuracy.md):
+needs a stable angle in degrees [0, 360). Both chips are 6-axis (no
+magnetometer): yaw has no absolute reference and gyro-Z integration drifts, so
+the driver attacks drift at the source (see docs/imu-accuracy.md):
 
-  - clean config: ±250°/s range (finest resolution), 42 Hz DLPF, 200 Hz rate;
-  - startup bias calibration: average the stationary zero-rate offset and subtract;
-  - ZUPT ("No Motion No Integration"): while the robot is still, freeze the heading
-    and keep refining the bias, so drift doesn't accumulate during stops.
+  - finest gyro range (±250°/s) for best resolution at our slow turn rates;
+  - startup bias calibration: average the stationary zero-rate offset;
+  - ZUPT ("No Motion No Integration"): while still, freeze the heading and
+    keep refining the bias so drift doesn't accumulate during stops.
 
-Call heading() once per control tick (it integrates over wall-clock dt between
-calls). Higher accuracy still: drive the chip's on-board DMP (hardware quaternion
-fusion) and read fused yaw from its FIFO — a drop-in upgrade behind this same
-interface, via an i2cdevlib-derived library. Bench-test all of this on the Pi.
+`make_imu()` probes the bus and returns whichever chip is present — the
+LSM6DSOX (WHO_AM_I 0x6C at 0x6A; bench-verified 2026-07-16, far better
+zero-rate stability than the MPU6050) wins when both answer. Call `heading()`
+once per control tick (integrates over wall-clock dt between calls).
 """
 
 import math
 import time
 
 from robot.hardware_config import Imu as ImuConfig
+from robot.hardware_config import ImuLsm as LsmConfig
 
 try:
     import smbus2  # type: ignore
@@ -29,10 +30,119 @@ except ImportError:
     _I2C_AVAILABLE = False
 
 
-class ImuDriver:
-    """Heading source for the controller (calibrated gyro-Z integration + ZUPT)."""
+class _HeadingIntegrator:
+    """Chip-agnostic heading logic: calibrated gyro-Z integration + ZUPT.
 
-    # MPU6050 registers
+    Subclasses provide _init_device(), _gyro_z() (°/s, mounting-sign-corrected)
+    and _accel_mag() (g).
+    """
+
+    def __init__(self, config, bus_id: int = 1):
+        self.config = config
+        self._heading = 0.0
+        self._bias = config.GYRO_Z_BIAS
+        self._last_t = None
+        if not _I2C_AVAILABLE:
+            self._bus = None
+            return
+        self._bus = smbus2.SMBus(bus_id)
+        self._init_device()
+        self.calibrate()
+
+    def calibrate(self, samples: int = None) -> None:
+        """Average the stationary zero-rate offset into the bias. Run after a
+        warm-up (~60-120 s) with the robot held still; bias shifts as it heats."""
+        if self._bus is None:
+            return
+        n = samples or self.config.CALIB_SAMPLES
+        total = 0.0
+        for _ in range(n):
+            total += self._gyro_z()
+            time.sleep(0.001)
+        self._bias += total / n
+
+    def reset_heading(self, heading: float = 0.0) -> None:
+        """Call once at the start so 'forward' is a known value."""
+        self._heading = heading % 360
+        self._last_t = None
+
+    def heading(self) -> float:
+        """Current heading in degrees [0, 360). Call once per control tick."""
+        if self._bus is None:
+            raise RuntimeError("IMU not available (no I2C bus)")
+        now = time.monotonic()
+        if self._last_t is None:
+            self._last_t = now
+            return self._heading
+        dt = now - self._last_t
+        self._last_t = now
+
+        rate = self._gyro_z() - self._bias
+        # ZUPT: if not turning and not moving, don't integrate; refine the bias.
+        if (abs(rate) < self.config.ZUPT_GYRO_THRESH
+                and abs(self._accel_mag() - 1.0) < self.config.ZUPT_ACCEL_THRESH):
+            self._bias += 0.05 * (self._gyro_z() - self._bias)  # slow bias tracking
+            return self._heading
+
+        self._heading = (self._heading + rate * dt) % 360
+        return self._heading
+
+    def close(self) -> None:
+        if self._bus is not None:
+            self._bus.close()
+
+
+class Lsm6dsoxDriver(_HeadingIntegrator):
+    """ST LSM6DSOX at 0x6A (0x6B if SA0 high). Little-endian output registers."""
+
+    WHO_AM_I = 0x0F
+    WHO_AM_I_VALUE = 0x6C
+    CTRL1_XL = 0x10
+    CTRL2_G = 0x11
+    CTRL3_C = 0x12
+    OUTX_L_G = 0x22
+    OUTX_L_A = 0x28
+    GYRO_SENS = 1000.0 / 8.75    # LSB per °/s at ±250 dps (8.75 mdps/LSB)
+    ACCEL_SENS = 1000.0 / 0.061  # LSB per g at ±2 g (0.061 mg/LSB)
+
+    def __init__(self, config=LsmConfig, bus_id: int = 1):
+        super().__init__(config, bus_id)
+
+    def _init_device(self) -> None:
+        b, a = self._bus, self.config.I2C_ADDRESS
+        who = b.read_byte_data(a, self.WHO_AM_I)
+        if who != self.WHO_AM_I_VALUE:
+            raise RuntimeError(
+                f"IMU at 0x{a:02x}: WHO_AM_I=0x{who:02x}, expected 0x6C — "
+                "not an LSM6DSOX."
+            )
+        # SW reset, then: block data update + auto-increment; accel 104 Hz ±2g;
+        # gyro 104 Hz ±250 dps (finest resolution — the robot turns slowly).
+        b.write_byte_data(a, self.CTRL3_C, 0x01)
+        time.sleep(0.02)
+        b.write_byte_data(a, self.CTRL3_C, 0x44)   # BDU | IF_INC
+        b.write_byte_data(a, self.CTRL1_XL, 0x40)  # 104 Hz, ±2 g
+        b.write_byte_data(a, self.CTRL2_G, 0x40)   # 104 Hz, ±250 dps
+        time.sleep(0.05)
+
+    def _read_word_le(self, reg: int) -> int:
+        d = self._bus.read_i2c_block_data(self.config.I2C_ADDRESS, reg, 2)
+        v = d[0] | (d[1] << 8)
+        return v - 65536 if v >= 32768 else v
+
+    def _gyro_z(self) -> float:
+        return self.config.GYRO_Z_SIGN * self._read_word_le(self.OUTX_L_G + 4) / self.GYRO_SENS
+
+    def _accel_mag(self) -> float:
+        ax = self._read_word_le(self.OUTX_L_A) / self.ACCEL_SENS
+        ay = self._read_word_le(self.OUTX_L_A + 2) / self.ACCEL_SENS
+        az = self._read_word_le(self.OUTX_L_A + 4) / self.ACCEL_SENS
+        return math.sqrt(ax * ax + ay * ay + az * az)
+
+
+class ImuDriver(_HeadingIntegrator):
+    """MPU6050 at 0x68 (legacy fallback). Big-endian output registers."""
+
     WHO_AM_I = 0x75
     WHO_AM_I_MPU6050 = 0x68   # genuine part; counterfeits (relabelled ICM-20689) read 0x98
     PWR_MGMT_1 = 0x6B
@@ -47,16 +157,7 @@ class ImuDriver:
     ACCEL_SENS = 16384.0   # LSB per g at ±2g
 
     def __init__(self, config=ImuConfig, bus_id: int = 1):
-        self.config = config
-        self._heading = 0.0
-        self._bias = config.GYRO_Z_BIAS
-        self._last_t = None
-        if not _I2C_AVAILABLE:
-            self._bus = None
-            return
-        self._bus = smbus2.SMBus(bus_id)
-        self._init_device()
-        self.calibrate()
+        super().__init__(config, bus_id)
 
     def _init_device(self) -> None:
         b, a, cfg = self._bus, self.config.I2C_ADDRESS, self.config
@@ -104,44 +205,17 @@ class ImuDriver:
         az = self._read_word(self.ACCEL_XOUT_H + 4) / self.ACCEL_SENS
         return math.sqrt(ax * ax + ay * ay + az * az)
 
-    def calibrate(self, samples: int = None) -> None:
-        """Average the stationary zero-rate offset into the bias. Run after a
-        warm-up (~60-120 s) with the robot held still; bias shifts as it heats."""
-        if self._bus is None:
-            return
-        n = samples or self.config.CALIB_SAMPLES
-        total = 0.0
-        for _ in range(n):
-            total += self._gyro_z()
-            time.sleep(0.001)
-        self._bias += total / n
 
-    def reset_heading(self, heading: float = 0.0) -> None:
-        """Call once at the start so 'forward' is a known value."""
-        self._heading = heading % 360
-        self._last_t = None
-
-    def heading(self) -> float:
-        """Current heading in degrees [0, 360). Call once per control tick."""
-        if self._bus is None:
-            raise RuntimeError("MPU6050 not available (no I2C bus)")
-        now = time.monotonic()
-        if self._last_t is None:
-            self._last_t = now
-            return self._heading
-        dt = now - self._last_t
-        self._last_t = now
-
-        rate = self._gyro_z() - self._bias
-        # ZUPT: if not turning and not moving, don't integrate; refine the bias.
-        if (abs(rate) < self.config.ZUPT_GYRO_THRESH
-                and abs(self._accel_mag() - 1.0) < self.config.ZUPT_ACCEL_THRESH):
-            self._bias += 0.05 * (self._gyro_z() - self._bias)  # slow bias tracking
-            return self._heading
-
-        self._heading = (self._heading + rate * dt) % 360
-        return self._heading
-
-    def close(self) -> None:
-        if self._bus is not None:
-            self._bus.close()
+def make_imu(bus_id: int = 1):
+    """Return a driver for whichever IMU is on the bus (LSM6DSOX preferred)."""
+    if not _I2C_AVAILABLE:
+        return Lsm6dsoxDriver(bus_id=bus_id)  # off-Pi no-op shell
+    try:
+        return Lsm6dsoxDriver(bus_id=bus_id)
+    except (OSError, RuntimeError) as lsm_err:
+        try:
+            return ImuDriver(bus_id=bus_id)
+        except (OSError, RuntimeError) as mpu_err:
+            raise RuntimeError(
+                f"no usable IMU: LSM6DSOX ({lsm_err}); MPU6050 ({mpu_err})"
+            )

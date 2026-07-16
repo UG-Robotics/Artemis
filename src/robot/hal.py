@@ -11,7 +11,7 @@ from core.sensors import SensorReading
 from robot.drivers.motor import MotorDriver
 from robot.drivers.servo import ServoDriver
 from robot.drivers.tof import TofArray
-from robot.drivers.imu import ImuDriver
+from robot.drivers.imu import make_imu
 from robot.drivers.color import ColorSensor
 from robot.drivers.camera import Camera
 
@@ -44,7 +44,7 @@ class RealHardware:
         # IMU and colour are optional so a ToF-only run (open challenge on the
         # current build) doesn't construct or poll unhealthy hardware — the IMU
         # is untrustworthy and the colour sensor isn't wired yet (2026-07-14).
-        self.imu = ImuDriver() if use_imu else None
+        self.imu = make_imu() if use_imu else None
         self.color = ColorSensor() if use_color else None
         self.camera = Camera() if use_camera else None
 

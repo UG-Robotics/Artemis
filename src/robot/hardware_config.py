@@ -89,6 +89,16 @@ class Imu:
     ZUPT_ACCEL_THRESH = 0.06  # g — ||accel|-1g| below this counts as "not moving"
 
 
+class ImuLsm:
+    """LSM6DSOX (bench-verified genuine 2026-07-16: WHO_AM_I 0x6C at 0x6A)."""
+    I2C_ADDRESS = 0x6A   # 0x6B if SA0 pulled high
+    GYRO_Z_SIGN = 1      # flip to -1 if heading runs backwards once mounted. VERIFY.
+    GYRO_Z_BIAS = 0.0    # deg/s at rest; overwritten by the startup calibration
+    CALIB_SAMPLES = 600  # stationary samples averaged at startup
+    ZUPT_GYRO_THRESH = Imu.ZUPT_GYRO_THRESH
+    ZUPT_ACCEL_THRESH = Imu.ZUPT_ACCEL_THRESH
+
+
 # Downward color sensor — TCS34725/27 (this build reads ID 0x4d = TCS34727).
 class Color:
     # 0x29 clashes with the VL53L1X ToF default, so the sensor lives on its own
