@@ -1,0 +1,31 @@
+[Unit]
+# Standalone button-armed run: boot the Pi, it loads the script and waits for
+# the physical start button — no laptop, no network needed. Runs ONE attempt
+# then exits (Restart=no) so a finished/aborted run never re-drives the robot.
+#
+# Owns the sensors, so it Conflicts with the web dashboard: starting this stops
+# artemis-web, and starting artemis-web stops this. Only one may be active.
+#
+# The command to run lives in /home/pi/artemis/RUN_CMD (one line, a python -m
+# target + args), so you switch which script autostarts by editing that file,
+# not this unit. Default = the square test; competition = e.g.
+#   robot.open_challenge --mode imu --direction cw
+Description=Artemis button-armed run (exclusive with artemis-web)
+Conflicts=artemis-web.service
+After=multi-user.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/artemis/src
+Environment=PYTHONUNBUFFERED=1
+# exec so the signal reaches Python, not the wrapping shell
+ExecStart=/bin/bash -lc 'exec python3 -m $(cat /home/pi/artemis/RUN_CMD)'
+# `systemctl stop` sends SIGINT (not SIGTERM) so the scripts' KeyboardInterrupt
+# handler runs its finally: hw.stop() cuts the motors and closes the log.
+KillSignal=SIGINT
+Restart=no
+TimeoutStopSec=8
+
+[Install]
+WantedBy=multi-user.target

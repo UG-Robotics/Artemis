@@ -11,6 +11,7 @@ turn". Points at the saved frame for each detection change.
 """
 
 import json
+import math
 import os
 import sys
 
@@ -76,6 +77,68 @@ def timeline(run: str) -> None:
     for t, kind, msg in sorted(events, key=lambda e: e[0]):
         print(f"  t={t:7.2f}s  {kind:<4} {msg}")
     print(f"({len(events)} events)")
+
+    # square-drive runs carry an estimated x/y path — draw it
+    sqf = os.path.join(run, "square.csv")
+    if os.path.exists(sqf):
+        _plot_path(sqf)
+
+
+def _plot_path(square_csv: str, w: int = 61, h: int = 25) -> None:
+    """ASCII scatter of the estimated x/y path (works over SSH, no GUI/deps).
+
+    S = start (0,0), E = end, digits = the phase-boundary corner index, '.' the
+    path. Y is drawn up = +y (north). The closing gap between S and E is the
+    dead-reckoning error you also see physically."""
+    pts, corners = [], []
+    with open(square_csv) as f:
+        header = f.readline().strip().split(",")
+        ix = {n: i for i, n in enumerate(header)}
+        last_side = None
+        for line in f:
+            c = line.rstrip("\n").split(",")
+            if len(c) <= ix.get("y_mm", 0):
+                continue
+            try:
+                x, y, side = float(c[ix["x_mm"]]), float(c[ix["y_mm"]]), c[ix["side"]]
+            except ValueError:
+                continue
+            pts.append((x, y))
+            if side != last_side and side.isdigit():
+                corners.append((x, y, side))
+                last_side = side
+    if len(pts) < 2:
+        print("  (no path points to plot)")
+        return
+
+    xs = [p[0] for p in pts] + [0.0]
+    ys = [p[1] for p in pts] + [0.0]
+    minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
+    spanx = max(maxx - minx, 1.0)
+    spany = max(maxy - miny, 1.0)
+
+    def cell(x, y):
+        cx = int((x - minx) / spanx * (w - 1))
+        cy = int((y - miny) / spany * (h - 1))
+        return cx, (h - 1 - cy)      # invert so +y is up
+
+    grid = [[" "] * w for _ in range(h)]
+    for x, y in pts:
+        cx, cy = cell(x, y)
+        if grid[cy][cx] == " ":
+            grid[cy][cx] = "."
+    for x, y, side in corners:
+        cx, cy = cell(x, y)
+        grid[cy][cx] = side
+    sx, sy = cell(0.0, 0.0)
+    ex, ey = cell(pts[-1][0], pts[-1][1])
+    grid[sy][sx] = "S"
+    grid[ey][ex] = "E"
+
+    print(f"\n  estimated path  ({minx:.0f}..{maxx:.0f} x, {miny:.0f}..{maxy:.0f} y mm)"
+          f"   S=start E=end  gap={math.hypot(pts[-1][0], pts[-1][1]):.0f}mm")
+    for row in grid:
+        print("  |" + "".join(row) + "|")
 
 
 def main(argv):
