@@ -55,21 +55,21 @@ Six views of the vehicle are in [`v-photos/`](v-photos). Key figures (current, g
 | Drive | Single 12 V DC gearmotor, rear axle |
 | Steering | Front-wheel, SG90 servo, ±35° measured linkage throw |
 | Compute | Raspberry Pi 3B+ |
-| Power | 3S pack (3 × 18650) + XL4015 buck for the 5 V rail |
+| Power | 7.4 V 2S LiPo, 5000 mAh (built-in protection board) + XL4015 buck for the 5 V rail |
 
 This is our **second chassis generation** (see §1 and [`models/README.md`](models/README.md) for the full story). The simulator's kinematic constants in [`src/core/config.py`](src/core/config.py) now model this chassis (208 mm, 152 mm wheelbase, ⌀55 mm wheels, 300 RPM rated drive), and the open-challenge controller was re-tuned and re-validated in simulation against the new geometry. Constants that can only be confirmed on the physical robot — such as the measured wheel RPM under load — still carry an explicit `VERIFY` marker in [`src/robot/hardware_config.py`](src/robot/hardware_config.py) until they have been bench-measured.
 
 ## 1. Mobility and mechanical design
 
 - **Servo-driven front steering.** The front wheels steer through a king-pin linkage driven by the SG90's horn; we measured the real assembled throw at ±35° and use that as the software steering limit. Our first-generation chassis used explicit Ackermann geometry (inner wheel turns tighter — see [`models/README.md`](models/README.md)), and that design reasoning carried into the current steering setup.
-- **Single-motor rear drive**, as required by the rules — one 12 V DC gearmotor on the rear axle, with a single-channel wheel encoder wired for odometry (counts-per-rev calibration pending, tracked as `VERIFY` in `hardware_config.py`).
+- **Single-motor rear drive**, as required by the rules — one 12 V-rated DC gearmotor on the rear axle. The motor's encoder is **not used** in the current build: the controllers are deliberately encoder-free, taking distance context from the ToF array and heading from the IMU, so the wheel-RPM measurement (`VERIFY` in `hardware_config.py`) only calibrates the speed model, not a control loop.
 - **Two chassis generations.** Our first fully 3D-printed design ([`models/v1/`](models/v1)) packed everything into a 140 mm shell for protection — and taught us a hard lesson: it was so cramped that every wiring fault meant a full teardown, which cost us days during electrical bring-up (§4). Generation 2 is a longer 208 mm chassis plate carrying a custom-designed **tub + lid body** ([`models/cad-source/`](models/cad-source) STEP sources, [`models/print/`](models/print) print-ready STLs): the screw-on lid comes off to expose the entire loom and every board for probing, the battery pack rides in a 24 mm service bay *under* the tub on metal standoffs, and the walls carry apertures for all four ToF sensors, the camera nose, the power switch, and the start button. The full iteration history (10 body revisions, with what each one fixed) is in [`models/README.md`](models/README.md).
 
 ## 2. Power and sensor architecture
 
 Wiring diagram: [`schemes/circuit_image.png`](schemes/circuit_image.png) (editable SVG alongside; full schematic PDF in [`docs/schematics/`](docs/schematics)). **Full writeup — power budget, bus architecture, placement rationale, calibration procedures, and failure modes: [`docs/power-and-sensors.md`](docs/power-and-sensors.md).** Highlights:
 
-**Power.** An 11.1 V 3S pack (3 × 18650 cells in a holder mounted in the under-tub bay) feeds the drive motor directly through the H-bridge; an XL4015 buck converter steps down to 5 V for the Pi, servo, and sensors, isolating logic from motor sag.
+**Power.** A 7.4 V 2S LiPo pack (5000 mAh, built-in dual-protection board, mounted in the under-tub bay) feeds the drive motor directly through the H-bridge; an XL4015 buck converter steps down to 5 V for the Pi, servo, and sensors, isolating logic from motor sag. Cost breakdown of the full build: [`docs/bom.md`](docs/bom.md).
 
 **Sensors and why we chose them:**
 

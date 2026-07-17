@@ -21,7 +21,7 @@ The vehicle is built on a **208 mm chassis** (measured over the wheels: ≈208 L
 
 - **Tub** (`body_tub`): an open box that screws onto the frame's top-deck M3 holes and hosts the Raspberry Pi 3B+ on a standard 58 × 49 mm standoff pattern. The walls carry purpose-cut apertures: horizontal 14 × 8 mm windows for all four VL53L1X ToF boards (front/left/right/rear, boards self-tapped to the wall), a camera nose tower for the OV5647, the power rocker on the left wall, and the 12 mm start button on the rear wall. Seven floor pass-throughs route the loom.
 - **Lid** (`body_lid`): a 3.5 mm screw-on cover (6 screws). The IMU bolts up through the lid into its stiffening ribs — an earlier revision used a printed boss, which we deleted when rib-mounting proved stiffer against motor vibration. The nose is deliberately left open so the lid never occludes the camera.
-- **Under-tub service bay**: the tub floor sits 24 mm above the frame on **4 × M3×24 metal hex standoffs**, creating a bay beneath it for the heaviest item — the 3 × 18650 battery holder (75 × 60 × 18 mm) — kept low and central for stability. `legs.step` is an optional printed alternative to the standoffs.
+- **Under-tub service bay**: the tub floor sits 24 mm above the frame on **4 × M3×24 metal hex standoffs**, creating a bay beneath it for the heaviest item — the battery — kept low and central for stability. The bay was originally sized around a 3 × 18650 holder (75 × 60 × 18 mm); the pack has since been replaced by a 2S LiPo brick that lives in the same bay. `legs.step` is an optional printed alternative to the standoffs.
 
 **Serviceability is the design's organizing principle** (see *Why we redesigned* below): lid off = every board and the full loom exposed; battery slides out of the open-sided bay without touching the electronics.
 
@@ -51,7 +51,7 @@ Its mechanical highlights, which still inform the current vehicle:
 
   <img width="600" alt="v1 steering simulation" src="https://github.com/user-attachments/assets/3ec526db-7bef-41e5-b09d-fc89b952c792" />
 
-- **Single-motor rear drive through a custom gearbox** (bevel gears, 1:1 ratio) — the ratio preserved the motor's rated speed, prioritizing lap time over torque, because the vehicle was light enough that torque was never the constraint. A single-channel wheel encoder was wired for odometry.
+- **Single-motor rear drive through a custom gearbox** (bevel gears, 1:1 ratio) — the ratio preserved the motor's rated speed, prioritizing lap time over torque, because the vehicle was light enough that torque was never the constraint. A wheel encoder was wired for odometry experiments, but never adopted — the control stack ended up deliberately encoder-free (ToF distances + gyro heading).
 - **Iterative chassis lightening** — material removed for steering clearance, thinner base with reinforcement extrusions at load points:
 
   <div align="center">

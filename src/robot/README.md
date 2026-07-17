@@ -5,9 +5,11 @@ brain in [`../core/`](../core/) (the `Controller` and tuned `config`) and adds t
 hardware drivers behind a single abstraction layer, so the same logic validated
 in simulation drives the real robot.
 
-> **Status: scaffold.** The structure, the hardware interface, and the control
-> loop are in place. The device drivers are stubs and two control-loop
-> dependencies are unfinished — see *Porting gap* below. It does not run yet.
+> **Status: driving.** The drivers are implemented and bench-verified, and the
+> open challenge runs on the vehicle via `robot.open_challenge` (ToF-only
+> `WallFollowController` by default; `--mode fusion` / `--mode imu` selectable).
+> The *Porting gap* below applies to the primary gyro `Controller`'s remaining
+> sim-only assumptions, not to the ToF-only path.
 
 ## Layout
 
@@ -28,7 +30,7 @@ core.Controller.update(sensors, robot, track, dt)
         ▲              ▲        ▲      ▲
         │   SensorReading      │   OpenChallengeWorld (main.py)
         │   from RealHardware  │
-        │                  RobotIO (main.py) → RealHardware actuators + encoder
+        │                  RobotIO (main.py) → RealHardware actuators
         └── same call the simulation makes
 ```
 
@@ -40,8 +42,8 @@ controller is unchanged between the two.
 The controller assumes two sim-only things; both are stubbed in `main.py`:
 
 1. **Pose** — it reads `robot.x/y/angle`. For the open challenge this is really
-   just the line-dedup in `_detect_lines`, which encoder distance can cover
-   (heading's already from the IMU). We'll add a small dead-reckoning estimator.
+   just the line-dedup in `_detect_lines`, which a dead-reckoned distance
+   estimate covers (heading's already from the IMU; the build is encoder-free).
 2. **Track map** — there isn't one. `OpenChallengeWorld` fakes the few values it
    asks for; returning `None` for the section query falls back to sensor/heading
    logic.
@@ -51,8 +53,8 @@ The obstacle challenge needs more (camera pillar geometry) — later.
 ## Bring-up order (suggested)
 
 1. Check the wiring against `schemes/` and fill in the `VERIFY` values in
-   `hardware_config.py` — measure the motor's real output RPM and encoder counts
-   early, since odometry depends on them.
+   `hardware_config.py` — measure the motor's real output RPM early, since the
+   speed model depends on it.
 2. Implement and bench-test each driver in `drivers/` independently.
 3. Implement the `PoseEstimator` / track model (porting gap) for the open
    challenge.
