@@ -133,10 +133,14 @@ class Lsm6dsoxDriver(_HeadingIntegrator):
     def _gyro_z(self) -> float:
         return self.config.GYRO_Z_SIGN * self._read_word_le(self.OUTX_L_G + 4) / self.GYRO_SENS
 
+    def accel(self) -> tuple:
+        """Raw (ax, ay, az) in g, sensor frame (not gravity-compensated)."""
+        return (self._read_word_le(self.OUTX_L_A) / self.ACCEL_SENS,
+                self._read_word_le(self.OUTX_L_A + 2) / self.ACCEL_SENS,
+                self._read_word_le(self.OUTX_L_A + 4) / self.ACCEL_SENS)
+
     def _accel_mag(self) -> float:
-        ax = self._read_word_le(self.OUTX_L_A) / self.ACCEL_SENS
-        ay = self._read_word_le(self.OUTX_L_A + 2) / self.ACCEL_SENS
-        az = self._read_word_le(self.OUTX_L_A + 4) / self.ACCEL_SENS
+        ax, ay, az = self.accel()
         return math.sqrt(ax * ax + ay * ay + az * az)
 
 
@@ -198,11 +202,15 @@ class ImuDriver(_HeadingIntegrator):
         """Yaw rate in °/s (sign-corrected for the mounting)."""
         return self.config.GYRO_Z_SIGN * self._read_word(self.GYRO_ZOUT_H) / self.GYRO_SENS
 
+    def accel(self) -> tuple:
+        """Raw (ax, ay, az) in g, sensor frame (not gravity-compensated)."""
+        return (self._read_word(self.ACCEL_XOUT_H) / self.ACCEL_SENS,
+                self._read_word(self.ACCEL_XOUT_H + 2) / self.ACCEL_SENS,
+                self._read_word(self.ACCEL_XOUT_H + 4) / self.ACCEL_SENS)
+
     def _accel_mag(self) -> float:
         """Total acceleration in g (≈1.0 at rest)."""
-        ax = self._read_word(self.ACCEL_XOUT_H) / self.ACCEL_SENS
-        ay = self._read_word(self.ACCEL_XOUT_H + 2) / self.ACCEL_SENS
-        az = self._read_word(self.ACCEL_XOUT_H + 4) / self.ACCEL_SENS
+        ax, ay, az = self.accel()
         return math.sqrt(ax * ax + ay * ay + az * az)
 
 

@@ -35,14 +35,7 @@ import time
 from core.config import CONTROL_HZ, MAX_SPEED, TRACK_WIDTH_OPEN_WIDE
 from core.wall_follow_controller import WallFollowController, WFState
 from robot.hal import RealHardware
-from robot.hardware_config import Button
-
-try:
-    import RPi.GPIO as GPIO  # type: ignore
-    _GPIO_AVAILABLE = True
-except (ImportError, RuntimeError):
-    GPIO = None
-    _GPIO_AVAILABLE = False
+from robot.start_button import arm_start, wait_for_start_button  # noqa: F401
 
 
 class OpenChallengeWorld:
@@ -91,38 +84,6 @@ class DeadReckonedPose:
         self._hw.stop()
 
 
-def wait_for_start_button(timeout: float = None) -> bool:
-    """Block until the start button is pressed (internal pull-up: pressed = LOW).
-
-    Deliberately uses RPi.GPIO — the SAME library the ToF driver uses to hold the
-    XSHUT lines HIGH. The old pigpio path needed the pigpiod daemon, and STARTING
-    that daemon resets the GPIO subsystem, dropping XSHUT LOW and knocking all
-    four ToFs off the I2C bus (they lose their reassigned addresses). Sharing
-    RPi.GPIO means no daemon and no pin-state reset. We never call
-    GPIO.cleanup() here — that too would drop XSHUT mid-run.
-
-    Falls back to an Enter prompt off-Pi. `timeout` (seconds) caps the wait;
-    None waits forever.
-    """
-    if not _GPIO_AVAILABLE:
-        input("RPi.GPIO unavailable — press Enter to start... ")
-        return True
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setwarnings(False)
-    GPIO.setup(Button.PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    print(f"Waiting for start button (BCM {Button.PIN}, press to start)...")
-    deadline = None if timeout is None else time.monotonic() + timeout
-    while True:
-        if GPIO.input(Button.PIN) == 0:         # HIGH = idle, LOW = pressed
-            time.sleep(0.03)                    # debounce: must hold ~30ms
-            if GPIO.input(Button.PIN) == 0:
-                return True
-        if deadline and time.monotonic() > deadline:
-            print("Button wait timed out.")
-            return False
-        time.sleep(0.01)
-
-
 def _make_logger(enabled: bool, challenge: str, mode: str, meta: dict,
                  save_frames: bool = True):
     """RunLogger or None. Never let a logging failure abort a run."""
@@ -134,15 +95,6 @@ def _make_logger(enabled: bool, challenge: str, mode: str, meta: dict,
     except Exception as exc:
         print(f"[logger] disabled — could not start ({exc})")
         return None
-
-
-def _countdown(wait_button: bool) -> bool:
-    if wait_button:
-        return wait_for_start_button()
-    for n in (3, 2, 1):
-        print(n)
-        time.sleep(1.0)
-    return True
 
 
 def run_wall_follow(track_width: float, wait_button: bool, use_camera: bool,
@@ -157,7 +109,7 @@ def run_wall_follow(track_width: float, wait_button: bool, use_camera: bool,
     world = OpenChallengeWorld(track_width)
     controller = WallFollowController(track_width=track_width)
 
-    if not _countdown(wait_button):
+    if not arm_start(wait_button):
         hw.close()
         return
     print("GO")
@@ -217,7 +169,7 @@ def run_gyro(track_width: float, wait_button: bool, direction: int,
     world = OpenChallengeWorld(track_width)
     controller = Controller(driving_direction=direction, challenge_type='open')
 
-    if not _countdown(wait_button):
+    if not arm_start(wait_button):
         hw.close()
         return
     print("GO")

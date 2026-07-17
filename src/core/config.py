@@ -304,6 +304,15 @@ POINTS_PARKED_PARTLY = 7     # 1.8.3: partly parked or not parallel
 SIM_FPS = 60               # Simulation frame rate
 CONTROL_HZ = 30            # Robot control loop rate (matches real robot)
 ROUND_TIME = 180           # 3 minutes in seconds
+
+# Square-drive IMU test (robot/square_drive.py) — 4x (drive side, turn 90).
+SQUARE_SIDE_MM = 1000          # target side length
+SQUARE_DRIVE_SPEED = 0.40      # fraction of max speed on the straights
+SQUARE_TURN_SPEED = 0.55       # fraction through the full-lock corner
+SQUARE_KP_HOLD = 2.0           # deg steering per deg heading error (straight hold)
+SQUARE_SIDE_TIMEOUT_S = 12.0   # per-side safety cap
+SQUARE_DIST_CAP_MM = 1350      # hard stop by TIME-distance even in accel mode, so a
+                               # bad accel estimate can not drive the robot into a wall
 PIXELS_PER_MM = 0.25       # Scale: 1mm = 0.25 pixels (800px for 3200mm)
 WINDOW_WIDTH = int(MAT_SIZE * PIXELS_PER_MM) + 200  # Extra for UI panel
 WINDOW_HEIGHT = int(MAT_SIZE * PIXELS_PER_MM)
