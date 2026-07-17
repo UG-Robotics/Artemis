@@ -40,6 +40,8 @@ class RealHardware:
                  use_color: bool = True):
         self.motor = MotorDriver()
         self.servo = ServoDriver()
+        self.motor_speed = 0.0             # last commanded speed fraction
+        self.servo_angle = 0.0             # last commanded steering angle (deg)
         self.tof = TofArray()
         # IMU and colour are optional so a ToF-only run (open challenge on the
         # current build) doesn't construct or poll unhealthy hardware — the IMU
@@ -63,12 +65,16 @@ class RealHardware:
         )
 
     def set_speed(self, fraction: float) -> None:
+        self.motor_speed = fraction        # last commanded, for logging/telemetry
         self.motor.set_speed_fraction(fraction)
 
     def set_steering(self, angle_deg: float) -> None:
+        self.servo_angle = angle_deg       # last commanded, for logging/telemetry
         self.servo.set_angle(angle_deg)
 
     def stop(self) -> None:
+        self.motor_speed = 0.0
+        self.servo_angle = 0.0
         self.motor.stop()
         self.servo.center()
 

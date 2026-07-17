@@ -40,6 +40,10 @@ class CameraWorker:
         self.line_color = None
         self.available = False
         self._running = False
+        # Set to a RunLogger to record every perception frame (line/heading/
+        # pillars + the frame that produced a detection change). Attached at GO
+        # so the button-wait isn't logged; None = no logging.
+        self.logger = None
         if not _PI_CAM:
             return
         from libcamera import Transform  # ships with picamera2 on the Pi
@@ -64,6 +68,11 @@ class CameraWorker:
                 frame = self._cam.capture_array()
                 self.vision_heading = estimate_heading(frame)
                 self.line_color = detect_line_color(frame)
+                logger = self.logger
+                if logger is not None:
+                    # pillars: [] until detect_pillars lands (obstacle challenge)
+                    logger.log_camera(self.line_color, self.vision_heading,
+                                      pillars=[], frame=frame)
             except Exception:
                 self.vision_heading = None
                 self.line_color = None

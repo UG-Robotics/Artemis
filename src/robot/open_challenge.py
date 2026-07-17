@@ -123,6 +123,19 @@ def wait_for_start_button(timeout: float = None) -> bool:
         time.sleep(0.01)
 
 
+def _make_logger(enabled: bool, challenge: str, mode: str, meta: dict,
+                 save_frames: bool = True):
+    """RunLogger or None. Never let a logging failure abort a run."""
+    if not enabled:
+        return None
+    try:
+        from robot.run_logger import RunLogger
+        return RunLogger(challenge, mode, meta=meta, save_frames=save_frames)
+    except Exception as exc:
+        print(f"[logger] disabled — could not start ({exc})")
+        return None
+
+
 def _countdown(wait_button: bool) -> bool:
     if wait_button:
         return wait_for_start_button()
@@ -132,7 +145,8 @@ def _countdown(wait_button: bool) -> bool:
     return True
 
 
-def run_wall_follow(track_width: float, wait_button: bool, use_camera: bool) -> None:
+def run_wall_follow(track_width: float, wait_button: bool, use_camera: bool,
+                    log: bool = True) -> None:
     """tof / fusion modes: WallFollowController, optionally camera-augmented."""
     hw = RealHardware(use_camera=False, use_imu=False, use_color=False)
     camera = None
@@ -148,15 +162,27 @@ def run_wall_follow(track_width: float, wait_button: bool, use_camera: bool) -> 
         return
     print("GO")
 
+    logger = _make_logger(log, "open", "fusion" if use_camera else "tof",
+                          {"track_width": track_width})
+    if logger and camera is not None:
+        camera.logger = logger
+
     dt = 1.0 / CONTROL_HZ
     try:
         while controller.state != WFState.STOPPED:
             tick_start = time.monotonic()
             sensors = hw.read_sensors()
+            cam_line = cam_heading = None
             if camera is not None and camera.available:
-                sensors.vision_heading = camera.vision_heading
-                sensors.color_detected = camera.line_color
+                cam_heading = camera.vision_heading
+                cam_line = camera.line_color
+                sensors.vision_heading = cam_heading
+                sensors.color_detected = cam_line
             controller.update(sensors, hw, world, dt)
+            if logger:
+                logger.log_sensors(sensors, hw.servo_angle, hw.motor_speed,
+                                   controller.get_state_name(), controller.turns,
+                                   cam_line, cam_heading)
             elapsed = time.monotonic() - tick_start
             if elapsed < dt:
                 time.sleep(dt - elapsed)  # hold the control rate
@@ -165,13 +191,19 @@ def run_wall_follow(track_width: float, wait_button: bool, use_camera: bool) -> 
     finally:
         hw.stop()
         if camera is not None:
+            camera.logger = None
             camera.close()
         hw.close()
+        if logger:
+            logger.close({"final_state": controller.get_state_name(),
+                          "turns": controller.turns,
+                          "elapsed_s": round(controller.elapsed_time, 1)})
         print(f"Done — state={controller.get_state_name()} "
               f"turns={controller.turns} t={controller.elapsed_time:.1f}s")
 
 
-def run_gyro(track_width: float, wait_button: bool, direction: int) -> None:
+def run_gyro(track_width: float, wait_button: bool, direction: int,
+             log: bool = True) -> None:
     """imu mode: the primary gyro Controller (needs a healthy IMU + camera lines)."""
     from core.controller import Controller, State
     from robot.camera_worker import CameraWorker
@@ -190,15 +222,26 @@ def run_gyro(track_width: float, wait_button: bool, direction: int) -> None:
         return
     print("GO")
 
+    logger = _make_logger(log, "open", "imu",
+                          {"track_width": track_width,
+                           "direction": "cw" if direction == 1 else "ccw"})
+    if logger:
+        camera.logger = logger
+
     dt = 1.0 / CONTROL_HZ
     try:
         while controller.state not in (State.FINISHED, State.STOPPED):
             tick_start = time.monotonic()
             sensors = hw.read_sensors()
-            if camera.available:
-                sensors.color_detected = camera.line_color
+            cam_line = camera.line_color if camera.available else None
+            if cam_line is not None:
+                sensors.color_detected = cam_line
             controller.update(sensors, pose, world, dt)
             pose.integrate(sensors.imu_heading, dt)
+            if logger:
+                logger.log_sensors(sensors, hw.servo_angle, hw.motor_speed,
+                                   controller.state.name, controller.sections_passed,
+                                   cam_line, camera.vision_heading if camera.available else None)
             elapsed = time.monotonic() - tick_start
             if elapsed < dt:
                 time.sleep(dt - elapsed)
@@ -206,8 +249,14 @@ def run_gyro(track_width: float, wait_button: bool, direction: int) -> None:
         pass
     finally:
         pose.stop()
+        camera.logger = None
         camera.close()
         hw.close()
+        if logger:
+            logger.close({"final_state": controller.state.name,
+                          "laps": controller.laps_completed,
+                          "sections": controller.sections_passed,
+                          "elapsed_s": round(controller.elapsed_time, 1)})
         print(f"Done — state={controller.state.name} laps={controller.laps_completed} "
               f"sections={controller.sections_passed} t={controller.elapsed_time:.1f}s")
 
@@ -235,18 +284,22 @@ def main() -> None:
                         help="track width in mm (default 1000; use 600 for narrow)")
     parser.add_argument("--direction", choices=("cw", "ccw"),
                         help="imu mode only: driving direction (sets corner-entry colour)")
+    parser.add_argument("--no-log", action="store_true",
+                        help="disable the run flight-recorder (~/artemis/logs/)")
     args = parser.parse_args()
 
     if _web_app_running():
         parser.error("artemis-web is running — it owns the camera and ToFs. "
                      "Stop it first: sudo systemctl stop artemis-web")
 
+    log = not args.no_log
     if args.mode == "imu":
         if not args.direction:
             parser.error("--mode imu requires --direction cw|ccw")
-        run_gyro(args.width, not args.now, 1 if args.direction == "cw" else -1)
+        run_gyro(args.width, not args.now, 1 if args.direction == "cw" else -1, log=log)
     else:
-        run_wall_follow(args.width, not args.now, use_camera=(args.mode == "fusion"))
+        run_wall_follow(args.width, not args.now,
+                        use_camera=(args.mode == "fusion"), log=log)
 
 
 if __name__ == "__main__":
