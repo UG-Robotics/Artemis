@@ -17,7 +17,7 @@ Prices are estimates in Ghanaian cedis (GH₵) at time of purchase; sourcing lin
 | [Power switch](https://www.aliexpress.com/wholesale?SearchText=rocker+switch) | 1 | GH₵12.00 | GH₵12.00 | Battery master switch |
 | [Push button](https://www.aliexpress.com/wholesale?SearchText=momentary+push+button) | 1 | GH₵7.00 | GH₵7.00 | Round-start trigger (rules-required single interaction) |
 | [LSM6DSOX IMU](https://www.aliexpress.com/wholesale?SearchText=LSM6DSOX) | 1 | tbc | tbc | Gyro heading (replacement — see below) |
-| [2S LiPo pack, 7.4 V 5000 mAh, protected](https://www.aliexpress.com/wholesale?SearchText=2s+lipo+7.4v+5000mah) | 1 | tbc | tbc | Power supply (replacement — see below) |
+| [2S LiPo pack, 7.4 V 5000 mAh, protected](https://www.aliexpress.com/wholesale?SearchText=2s+lipo+7.4v+5000mah) ([label](images/battery-2s-lipo-label.jpeg)) | 1 | tbc | tbc | Power supply (replacement — see below) |
 | Gen-2 chassis (frame, steering, ⌀55 mm wheels) | 1 | tbc | tbc | Rolling chassis, built in-house |
 | PLA filament for the printed body | ~0.3 kg | tbc | tbc | Tub + lid, printed on a Bambu Lab P1S |
 | **Subtotal (priced items)** | | | **GH₵1,791.00** | |

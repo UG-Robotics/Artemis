@@ -13,7 +13,7 @@ Companion to the wiring diagram in [`../schemes/`](../schemes) (full schematic P
         └── sensor set (4× VL53L1X, LSM6DSOX, TCS34727) via the Pi's 3V3/5V pins
 ```
 
-> **Battery history:** the build originally used a 3×18650 holder (11.1 V 3S). It was replaced with a single 7.4 V 2S LiPo brick — higher capacity (5000 mAh), a built-in protection circuit, and a single rigid unit in the under-tub bay instead of a holder with spring contacts (a vibration liability). The 12 V-rated motor now runs below rated voltage, which is fine for us — the sim retune showed the vehicle is driven at ~35% throttle anyway — and the actual wheel RPM at pack voltage is exactly what the `OUTPUT_RPM` `VERIFY` measurement will pin down.
+> **Battery history:** the build originally used a 3×18650 holder (11.1 V 3S). It was replaced with a single 7.4 V 2S LiPo brick ([label photo](images/battery-2s-lipo-label.jpeg): Xtreme 1, 5000 mAh / 37 Wh, 8.4 V max charge) — higher capacity, a built-in dual-protection circuit board, and a single rigid unit in the under-tub bay instead of a holder with spring contacts (a vibration liability). The 12 V-rated motor now runs below rated voltage, which is fine for us — the sim retune showed the vehicle is driven at ~35% throttle anyway — and the actual wheel RPM at pack voltage is exactly what the `OUTPUT_RPM` `VERIFY` measurement will pin down.
 
 Two deliberate separations:
 
