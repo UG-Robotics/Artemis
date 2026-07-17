@@ -10,31 +10,22 @@ ENV/
 *.egg-info/
 dist/
 build/
-screenshots/
 sim_backup/
-*.pdf
-*.docx
-*.jpeg
-*.jpg
-*.zip
-files/
-docs/
 .claude/
 
-# CAD / 3D-model binaries — kept local only (organised under models/).
-# Large; source lives in the team's CAD tool, not git.
-*.stl
-*.STL
-*.step
-*.STEP
-*.stp
-*.STP
-*.sldprt
-*.SLDPRT
-*.3mf
-*.svg
+# Internal working notes — session handoffs and downloaded reference PDFs
+# (the official rules PDF is linked from the README instead of committed).
+docs/handoffs/
+docs/reference/
+files/
+
 # Local CAD/measurement reference (screenshots etc.)
 models/reference/
+# Oversized experimental assemblies (61 MB / 41 MB) — kept local only
+models/print/New assembly test.stl
+models/cad-source/New assembly test.STEP
+# Printer-sliced output (machine-specific; STLs are the shareable artifact)
+*.gcode.3mf
 
 # Robot credentials / host config — copy .env.robot.example and fill in locally.
 .env
