@@ -1,0 +1,6 @@
+# Development machine (simulator + test suites). Python 3.8+.
+pygame
+numpy
+
+# The Raspberry Pi runtime has its own dependency set (hardware libraries that
+# only install on the Pi) — see requirements-robot.txt.

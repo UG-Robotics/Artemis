@@ -1,0 +1,10 @@
+# Raspberry Pi runtime (Raspberry Pi OS). Install on the Pi, not the dev machine.
+# System packages (apt): python3-picamera2 python3-opencv python3-pigpio
+RPi.GPIO
+pigpio
+smbus2
+pyserial
+adafruit-blinka              # board/busio CircuitPython compat layer
+adafruit-circuitpython-vl53l1x
+adafruit-circuitpython-busdevice
+numpy

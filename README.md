@@ -67,7 +67,7 @@ This is our **second chassis generation** (see §1 and [`models/README.md`](mode
 
 ## 2. Power and sensor architecture
 
-Wiring diagram: [`schemes/circuit_image.png`](schemes/circuit_image.png) (editable SVG alongside; full schematic PDF in [`docs/schematics/`](docs/schematics)).
+Wiring diagram: [`schemes/circuit_image.png`](schemes/circuit_image.png) (editable SVG alongside; full schematic PDF in [`docs/schematics/`](docs/schematics)). **Full writeup — power budget, bus architecture, placement rationale, calibration procedures, and failure modes: [`docs/power-and-sensors.md`](docs/power-and-sensors.md).** Highlights:
 
 **Power.** An 11.1 V 3S pack (3 × 18650 cells in a holder mounted in the under-tub bay) feeds the drive motor directly through the H-bridge; an XL4015 buck converter steps down to 5 V for the Pi, servo, and sensors, isolating logic from motor sag.
 
@@ -135,7 +135,7 @@ The decisions that shaped the robot, with the evidence behind them:
 
 **Pi setup (Raspberry Pi OS):**
 1. In `/boot/firmware/config.txt`: enable I2C with `dtparam=i2c_arm_baudrate=50000`, and add the software I2C bus for the color sensor: `dtoverlay=i2c-gpio,bus=3,i2c_gpio_sda=20,i2c_gpio_scl=21`.
-2. Install dependencies: `RPi.GPIO`, `pigpio`, `smbus2`, the Adafruit VL53L1X and TCS34725 libraries, `picamera2`, `opencv-python`.
+2. Install dependencies: `pip install -r requirements-robot.txt` plus the apt packages listed in that file (`picamera2`/`opencv` install via apt on Raspberry Pi OS).
 3. Copy the repo's `src/` to `/home/pi/artemis/src` (we deploy with `rsync`; the deploy stamps the git revision into `DEPLOYED_REV` so run logs record which code ran).
 4. Verify each device independently with the scripts in [`src/robot/bench/`](src/robot/bench) (I2C scan, per-sensor live reads, servo jog, motor probe, button test), then fill in any `VERIFY` constants in `hardware_config.py`.
 
@@ -148,14 +148,17 @@ python3 -m robot.web.app                           # teleop/telemetry dashboard 
 ```
 For competition starts with no laptop attached, the `artemis-run` systemd unit boots the Pi straight to button-armed in ≈23 s, runs exactly one attempt, and cuts motors on stop ([`src/robot/artemis-run.service`](src/robot/artemis-run.service)).
 
-**Simulator (any machine, Python 3.8+ and pygame):**
+**Simulator (any machine):**
 ```bash
+pip install -r requirements.txt
 cd src/sim/open-challenge-sim
 python sim_viewer.py        # real-time visualizer (SPACE pause, ←/→ configs, T sensor rays)
 python test_pd_tuning.py    # scored PD/navigation suite
 ```
 
 ## Testing workflow
+
+Full documentation with the per-suite pass bars: [`tests.md`](tests.md). In short:
 
 1. **Simulate** — every control change must pass the scored sim suites (`test_pd_tuning.py`, `test_open_score.py`, plus headless and sensor-noise tests) across the randomized configs before it is deployed.
 2. **Bench** — new or repositioned hardware goes through its `robot/bench/` script in isolation before joining the control loop.
