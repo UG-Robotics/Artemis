@@ -69,7 +69,9 @@ class Tof:
 
 # Start button — momentary, 10k pulldown to GND (pressed = HIGH).
 class Button:
-    PIN = 17
+    # Wired GPIO27 (header pin 13) -> button -> GND, internal pull-up.
+    # Verified 2026-07-17 with robot.bench.button_test. Pressed = LOW.
+    PIN = 27
 
 
 # IMU — MPU6050.

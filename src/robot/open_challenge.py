@@ -38,11 +38,11 @@ from robot.hal import RealHardware
 from robot.hardware_config import Button
 
 try:
-    import pigpio  # type: ignore
-    _PIGPIO_AVAILABLE = True
-except ImportError:
-    pigpio = None
-    _PIGPIO_AVAILABLE = False
+    import RPi.GPIO as GPIO  # type: ignore
+    _GPIO_AVAILABLE = True
+except (ImportError, RuntimeError):
+    GPIO = None
+    _GPIO_AVAILABLE = False
 
 
 class OpenChallengeWorld:
@@ -92,32 +92,35 @@ class DeadReckonedPose:
 
 
 def wait_for_start_button(timeout: float = None) -> bool:
-    """Block until the start button is pressed (pressed = HIGH, 10k pulldown).
+    """Block until the start button is pressed (internal pull-up: pressed = LOW).
 
-    Returns True once pressed. Falls back to a blocking prompt when pigpio isn't
-    available (off-Pi) so the launcher still runs. `timeout` is a safety cap in
-    seconds; None waits forever.
+    Deliberately uses RPi.GPIO — the SAME library the ToF driver uses to hold the
+    XSHUT lines HIGH. The old pigpio path needed the pigpiod daemon, and STARTING
+    that daemon resets the GPIO subsystem, dropping XSHUT LOW and knocking all
+    four ToFs off the I2C bus (they lose their reassigned addresses). Sharing
+    RPi.GPIO means no daemon and no pin-state reset. We never call
+    GPIO.cleanup() here — that too would drop XSHUT mid-run.
+
+    Falls back to an Enter prompt off-Pi. `timeout` (seconds) caps the wait;
+    None waits forever.
     """
-    if not _PIGPIO_AVAILABLE:
-        input("pigpio unavailable — press Enter to start... ")
+    if not _GPIO_AVAILABLE:
+        input("RPi.GPIO unavailable — press Enter to start... ")
         return True
-    pi = pigpio.pi()
-    if not pi.connected:
-        input("pigpiod not running — press Enter to start... ")
-        return True
-    try:
-        pi.set_mode(Button.PIN, pigpio.INPUT)
-        pi.set_pull_up_down(Button.PIN, pigpio.PUD_DOWN)
-        print(f"Waiting for start button (BCM {Button.PIN})...")
-        deadline = None if timeout is None else time.monotonic() + timeout
-        while pi.read(Button.PIN) == 0:
-            if deadline and time.monotonic() > deadline:
-                print("Button wait timed out.")
-                return False
-            time.sleep(0.01)
-        return True
-    finally:
-        pi.stop()
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setwarnings(False)
+    GPIO.setup(Button.PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    print(f"Waiting for start button (BCM {Button.PIN}, press to start)...")
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while True:
+        if GPIO.input(Button.PIN) == 0:         # HIGH = idle, LOW = pressed
+            time.sleep(0.03)                    # debounce: must hold ~30ms
+            if GPIO.input(Button.PIN) == 0:
+                return True
+        if deadline and time.monotonic() > deadline:
+            print("Button wait timed out.")
+            return False
+        time.sleep(0.01)
 
 
 def _countdown(wait_button: bool) -> bool:
