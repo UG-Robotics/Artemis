@@ -40,7 +40,7 @@ SEATS_PER_SECTION = 6      # 4 T-intersections + 2 X-intersections
 
 # Parking lot (rules and appendix A.6)
 PARKING_WIDTH = 200         # Always 20cm
-PARKING_LENGTH_FACTOR = 1.5 # 1.5 * robot length = 210mm with current dimensions
+PARKING_LENGTH_FACTOR = 1.5 # 1.5 * robot length = 312mm with current dimensions
 PARKING_MARKER_SIZE = (200, 20, 100)  # Magenta markers: 20cm x 2cm x 10cm
 PARKING_PARALLEL_TOLERANCE = 20  # 2cm = 20mm wheel distance difference
 
@@ -60,26 +60,30 @@ PARK_APPROACH_MAX_DIST = 2600  # mm — approach travel before giving up -> stop
 PARK_OVERRUN = 85           # mm — bay-centre overshoot in seat before giving up
 
 
-# Robot specifications (from CAD model measurements, 2026-05-14)
-ROBOT_LENGTH = 140         # mm (CAD: 14cm)
-ROBOT_WIDTH = 88           # mm (CAD: 8.8cm, includes tires)
-ROBOT_HEIGHT = 56          # mm (CAD: 5.626cm)
-ROBOT_WEIGHT = 219         # grams (CAD estimate: 219.42g)
+# Robot specifications (gen-2 chassis, from the CAD assembly — see
+# models/README.md; v1 was 140x88mm with 30.4mm LEGO wheels)
+ROBOT_LENGTH = 208         # mm over the wheels
+ROBOT_WIDTH = 148          # mm over the wheels (incl. tires)
+ROBOT_HEIGHT = 100         # mm — same as the track wall height
+ROBOT_WEIGHT = None        # grams — gen-2 not yet weighed (rules limit 1500 g)
 ROBOT_MAX_LENGTH = 300     # Max allowed by rules
 ROBOT_MAX_WIDTH = 200      # Max allowed by rules
 ROBOT_MAX_HEIGHT = 300     # Max allowed by rules
 ROBOT_MAX_WEIGHT = 1500    # 1.5kg in grams
 
-# Drive system (from CAD model)
-WHEELBASE = 76             # Distance between front and rear axles (mm, CAD: 7.6cm)
-TRACK_WHEEL = 88           # Distance between left and right wheels (mm, same as width)
-WHEEL_DIAMETER = 30.4      # mm (LEGO 55981C05)
+# Drive system (gen-2 rolling chassis)
+WHEELBASE = 152            # Distance between front and rear axles (mm)
+TRACK_WHEEL = 120          # Distance between left and right wheel centres (mm)
+WHEEL_DIAMETER = 55        # mm — rubber wheels (was 30.4mm LEGO on v1)
 MAX_STEERING_ANGLE = 35  # degrees (measured throw of reassembled servo linkage)
 
-# Motor: N20 12V 136RPM
-MOTOR_RPM = 136
+# Motor: 12V 300RPM gearmotor, direct rear-axle drive. 300 is the RATED output
+# RPM at 12V; on the 11.1V 3S pack, loaded, it will run slower. Once the wheel
+# RPM is bench-measured, record it as Motor.OUTPUT_RPM in
+# src/robot/hardware_config.py and update this to match.
+MOTOR_RPM = 300
 WHEEL_CIRCUMFERENCE = math.pi * WHEEL_DIAMETER
-MAX_SPEED = (MOTOR_RPM * WHEEL_CIRCUMFERENCE) / 60  # mm/s ≈ 216.5 mm/s
+MAX_SPEED = (MOTOR_RPM * WHEEL_CIRCUMFERENCE) / 60  # mm/s ≈ 863.9 mm/s
 ACCELERATION = 500         # mm/s² (approximate)
 DECELERATION = 800         # mm/s² (approximate, braking)
 
@@ -92,8 +96,12 @@ SPEED_PARKING = 0.35
 SPEED_THREE_POINT = 0.30
 
 # Open challenge has no pillars to dodge, so it can push harder.
-SPEED_OPEN_CRUISE = 0.95
-SPEED_OPEN_CORNER = 0.70
+# Gen-2 retune (2026-07-17): fractions rebased to the 864 mm/s gen-2 top speed.
+# 0.35 = ~302 mm/s cruise — 2026-07 sim sweep: 40/40 perfect scored runs with
+# ~92s 3-lap time (vs 180s budget); 0.40 stayed 40/40 but tripled narrow-track
+# wall contacts, so 0.35 is the validated ceiling for now.
+SPEED_OPEN_CRUISE = 0.35
+SPEED_OPEN_CORNER = 0.22
 
 # Wall-following PD steering limit, separate from the robot's physical max.
 WALL_FOLLOW_MAX_STEER = 30  # degrees — prevents PD oscillation with high max steering
@@ -101,7 +109,7 @@ WALL_FOLLOW_MAX_STEER = 30  # degrees — prevents PD oscillation with high max 
 # Corner turn geometry (bicycle model: R = wheelbase / tan(delta)).
 # R = track_width/2 = 500mm keeps the robot centered through the corner arc.
 CORNER_TURN_RADIUS = 500   # mm — turning radius matched to track geometry
-CORNER_STEERING_ANGLE = math.degrees(math.atan(WHEELBASE / CORNER_TURN_RADIUS))  # ~8.6°
+CORNER_STEERING_ANGLE = math.degrees(math.atan(WHEELBASE / CORNER_TURN_RADIUS))  # ~16.9°
 CORNER_ARC_LENGTH = CORNER_TURN_RADIUS * math.pi / 2  # ~785mm for a 90° arc
 CORNER_MIN_EXIT_ANGLE = 87   # degrees — minimum heading change to exit corner
 CORNER_MAX_EXIT_ANGLE = 100  # degrees — safety cap, force exit above this
@@ -154,8 +162,12 @@ CAMERA_MIN_DETECTION = 100 # mm min detection distance
 
 # Gyro heading-hold driving (primary controller). Hold a goal heading; a corner
 # is target += 90°. ToF only trims laterally when aligned.
-KP_HEADING = 0.45          # steering deg per deg of heading error
-KD_HEADING = 0.25          # damping on heading error
+KP_HEADING = 1.0           # steering deg per deg of heading error. Gen-2 retune:
+                           # the 152mm wheelbase halves yaw rate per steer deg, so
+                           # gains roughly double vs v1 (0.45/0.25). Sweep at 0.35
+                           # cruise: 0.9-1.2 all give 112/112 on test_pd_tuning
+                           # phases 1-4; 1.0 = mid-plateau.
+KD_HEADING = 0.5           # damping on heading error
 KP_TRIM = 0.02             # centring: steering deg per mm of (tof_r - tof_l)
 TURN_HEADING_GATE = 20     # deg — above this we're mid-corner: drop trim, slow
 CORNER_DEBOUNCE_TICKS = 20 # ticks to ignore further corner lines after a turn
@@ -209,10 +221,13 @@ VISION_HEADING_GAIN = 400.0    # deg heading per unit slope (rows/col) — PLACE
                                # until bench calibration (tape-protractor yaw sweep);
                                # sign/zero are trustworthy, scale is not.
 WALL_SETPOINT = 250            # mm — target distance when following a single wall
-CORNER_TRIGGER_FRONT = 450     # mm — front wall this close = corner ahead, start turn.
-                               # 450 (not 400) compensates for CORNER_PERSIST_TICKS
-                               # delaying the trigger ~3 ticks: sim sweep at persist=3
-                               # gives narrow-track 10/10 clean at 450 vs 4/10 at 400.
+CORNER_TRIGGER_FRONT = 600     # mm — front wall this close = corner ahead, start turn.
+                               # Gen-2 retune: the 152mm wheelbase turns a 217mm
+                               # radius at full lock (vs 108mm on v1) and cruise is
+                               # ~300mm/s, so the turn must start earlier than the
+                               # v1-tuned 450. 10-seed scored sweep at 0.35 cruise:
+                               # 600 = 80/80 perfect runs and the fewest wall
+                               # contacts (650 and 550 both dropped noisy seeds).
 CORNER_PERSIST_TICKS = 3       # front must stay below the trigger this many consecutive
                                # ticks before a corner fires — rejects single-frame ToF
                                # dropout spikes (a stray near read) that would otherwise
@@ -260,7 +275,11 @@ SIDE_SUM_REALIGNED = 1300      # mm — left+right at most this = back in a corr
                                # side. Replaces the old per-side < SIDE_WALL_VALID
                                # test, which a CENTRED robot in a 1000mm corridor
                                # could never satisfy -> endless spin past 90 deg
-TURN_EXIT_HOLD = 4             # consecutive "realigned" ticks needed to end a turn
+TURN_EXIT_HOLD = 6             # consecutive "realigned" ticks needed to end a turn.
+                               # Gen-2 retune: 6 (was 4) — at ~190mm/s corner speed
+                               # the wider 148mm body clips the inner wall if the
+                               # turn ends on a 4-tick glimpse; sweep: 4->6 cut
+                               # scored-run wall contacts ~5x (10.2 -> 2.2 sum/20)
 TURN_DEBOUNCE_TICKS = 90       # ticks (~3s at 30Hz) to ignore new corners after a
                                # turn, so one physical corner isn't counted twice.
                                # 3s is still < half the shortest corner-to-corner

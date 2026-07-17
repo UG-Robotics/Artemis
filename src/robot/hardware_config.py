@@ -45,7 +45,7 @@ class Servo:
     # Steering slew rate (deg/s): how fast the wheels sweep toward a new
     # target. Full lock-to-lock (70 deg) takes 70/SLEW_RATE_DPS seconds.
     SLEW_RATE_DPS = 90.0
-    # Steering limit is core.config.MAX_STEERING_ANGLE (77.48° from CAD). VERIFY.
+    # Steering limit is core.config.MAX_STEERING_ANGLE (35°, measured throw).
 
 
 # ToF distance sensors.
