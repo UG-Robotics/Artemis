@@ -1,58 +1,62 @@
- <h1>MODELS DOCUMENTATION</h1><br>
-<p>
-   This folder contains details about the model, design development and functionality of the robot developed by Team Artemis for the World Robot Olympiad(WRO) Future Engineers Challenge. The purpose of this documentation is to provide an overview of the robots mechanical structure, key components and design considerations . it highlights the engineering decisions made during the development process and explains the various design  alterations made to ensure effective performance.
-</p><br>
-<h2>🛠️Mechanical Design And Sizing</h2><br>
-<p> The design of Team Artemis's robot was guided by two main objectives: compactness and component protection. The robot of size 14cm(L) 8.8cm(W) and 5.63cm(H) was built with a small footprint to improve maneuverability and reduce the likelihood of collisions during operation.</p>
-<p>In addition, the majority of the electronic components were positioned within the robot's structure rather than being exposed externally. This approach helps protect sensitive components, reduces the risk of accidental damage or tampering, and contributes to a cleaner and more organized design. The compact arrangement of components also improves weight distribution and overall stability during movement.</p><br>
-Figures 1&2 show the completed robot from different perspectives.<br>
-<h4> ISOMETRIC VIEW </h4>
-<p align="center">
-<img width="1191" height="778" alt="Isometric" src="https://github.com/user-attachments/assets/be3c25d9-5065-48c6-8190-f8b5faf5acaf" />
-</p>
-<h4> ORTHOGRAPHIC VIEWS </h4>
-<P><img width="714" height="417" alt="FOUR SIDE" src="https://github.com/user-attachments/assets/0fa2cfac-3aa2-4138-8db0-d97fbfe9e14b" />
-</P><br>
-<h2>🔧STEERING MECHANISM </h2><br>
-<p>
-The robot uses a steering system based on Ackermann steering geometry, allowing the inner wheel to turn at a greater angle than the outer wheel during cornering. This reduces wheel slip and improves turning accuracy. Steering is actuated by a servo motor, with the servo horn directly connected to the steering linkage to control the front wheels.<br>
-The simulations and steering analysis graph used to validate the design are shown below.
-</p><br>
-<img width="737" height="536" alt="TEST" src="https://github.com/user-attachments/assets/3ec526db-7bef-41e5-b09d-fc89b952c792" />
-<br>
-https://github.com/user-attachments/assets/2cb1c8b4-25f4-4e00-9db0-9a84759839ec
-<h2> ⚙️REAR DRIVE / MOTION </h2><br>
-<P>
-Artemis employs a single-motor differential rear drive system, designed in accordance with competition rules that restrict the use of multiple drive motors for the rear drivetrain. This constraint influenced the decision to optimize performance around a single high-speed motor while maintaining mechanical simplicity and efficiency.<br>
-A custom gearbox was developed to support the drivetrain layout and improve mechanical control of power transmission to the rear wheels. The gearbox also ensured proper integration between the motor and wheel assembly within the limited available space, addressing key sizing constraints in the robot design.<br>
-A 1:1 gear ratio was selected to preserve the motor’s rated speed of 500 RPM, prioritizing velocity and responsiveness over torque multiplication. While alternative gear ratios were considered to increase torque, spatial limitations and design constraints prevented further reduction or multiplication within the gearbox.<br>
-Encoders are incorporated into the drivetrain to enable measurement of wheel rotation, supporting precise motion tracking for autonomous navigation and improving control accuracy of the system.<br>
- See below simulations and graph analysis for the rear motion.<br></P>
- <img width="353" height="200" alt="Differential drive " src="https://github.com/user-attachments/assets/9aeccc85-b13d-44da-b332-d97253333e70" />
- <h2>🪚CHASIS MODIFICATIONS </h2>
-<p>The chassis was iteratively redesigned to improve performance, manufacturability, and integration of components. Material was removed in selected regions to increase steering clearance, enabling a greater steering angle and improved maneuverability.<br>
-To optimize production efficiency, the base structure thickness was reduced to lower filament usage and printing time while still maintaining sufficient rigidity. To compensate for the reduced material, reinforcement extrusions were added at key load-bearing points to improve structural strength and prevent deformation under load.<br>
-A slip-fit mounting system was implemented between the chassis and the upper body to allow quick and tool-free assembly and disassembly, improving accessibility for maintenance and internal adjustments. The upper body was designed as a hollow enclosure to house electronic components securely, while ventilation cutouts were incorporated to support airflow and reduce heat accumulation during operation.<p><br>
-See the figures below to view iterations made.<br>
-<div align ="centre">
- <img width="353" height="200" alt="first" src="https://github.com/user-attachments/assets/10d61965-bf15-4e79-865b-48f4ca92aa18"
-  />➡️➡️
- <img width="353" height="200" alt="final" src="https://github.com/user-attachments/assets/8fa4f160-aa62-4e27-ad81-3dd9c0513495" />
-</div><br>
-<h4>Cut-outs made to ensure proper ventilation.</h4><br>
-<img width="421" height="362" alt="cut_out" src="https://github.com/user-attachments/assets/c2faa51b-fa28-4f83-ad78-6b606154c555" />
+# Models — mechanical design & CAD
 
+CAD for the Artemis vehicle, in two generations:
 
+```
+models/
+├── cad-source/   # Current (gen-2) design — editable STEP sources
+│   ├── Improved frame.step   # Chassis base plate (71 × 171 mm)
+│   ├── body.step             # Tub + lid combined, in assembled position
+│   ├── body_tub.step / body_lid.step / legs.step
+│   └── *_print.stl           # Bed-oriented exports (duplicated in print/)
+├── print/        # Current design — print-ready STLs
+└── v1/           # Retired first-generation design (kept for the record)
+```
 
+## Current design (generation 2, July 2026)
 
+The vehicle is built on a **208 mm chassis** (measured over the wheels: ≈208 L × 148 W mm, ≈100 mm tall — exactly the track wall height, well inside the 300 × 200 × 300 limit). The rolling chassis — frame plate, steering, motor, and ⌀≈55 mm wheels, wheelbase ≈152 mm — was built by our mechanical engineer; the **body is our own design**, modeled programmatically in Python (gmsh/OpenCASCADE CSG scripts) so every revision is reproducible from code rather than mouse-clicks.
 
+### Body architecture: tub + lid
 
+- **Tub** (`body_tub`): an open box that screws onto the frame's top-deck M3 holes and hosts the Raspberry Pi 3B+ on a standard 58 × 49 mm standoff pattern. The walls carry purpose-cut apertures: horizontal 14 × 8 mm windows for all four VL53L1X ToF boards (front/left/right/rear, boards self-tapped to the wall), a camera nose tower for the OV5647, the power rocker on the left wall, and the 12 mm start button on the rear wall. Seven floor pass-throughs route the loom.
+- **Lid** (`body_lid`): a 3.5 mm screw-on cover (6 screws). The IMU bolts up through the lid into its stiffening ribs — an earlier revision used a printed boss, which we deleted when rib-mounting proved stiffer against motor vibration. The nose is deliberately left open so the lid never occludes the camera.
+- **Under-tub service bay**: the tub floor sits 24 mm above the frame on **4 × M3×24 metal hex standoffs**, creating a bay beneath it for the heaviest item — the 3 × 18650 battery holder (75 × 60 × 18 mm) — kept low and central for stability. `legs.step` is an optional printed alternative to the standoffs.
 
+**Serviceability is the design's organizing principle** (see *Why we redesigned* below): lid off = every board and the full loom exposed; battery slides out of the open-sided bay without touching the electronics.
 
+### Print notes
 
+Printed on a Bambu Lab P1S, PLA, 0.2 mm layers. `body_tub_print.stl` and `body_lid_print.stl` are already bed-oriented: the tub prints floor-down (light supports only in window/aperture overhangs), the lid prints flat with **no supports**. All holes are self-tap pilot or clearance sizes — no printed threads.
 
+### Iteration history (what ten body revisions taught us)
 
+The body went through ~10 scripted revisions before printing. The instructive failures:
 
+1. **The battery drove the architecture.** The 60 mm-wide holder physically could not fit between the tub's original corner legs on a 71 mm frame plate. We evaluated three placements (under-chassis, in-tub, on-lid) against center-of-mass and access, and settled on the under-tub bay — the decision that produced the standoff design.
+2. **Integral legs doubled the print.** Printing the tub with its four 24 mm legs forced ~35 g of tree support under the raised floor and pushed the print past 5 hours. Deleting the legs (tub flat on the bed) and bridging with metal standoffs cut support material to grams — and the metal is stronger anyway.
+3. **Wall cut-outs must overshoot.** Twice, a window boolean that extended exactly *to* the inner wall face left a 0.5 mm skin over the opening. Rule adopted: every cut box extends past the face it opens.
+4. **Fit is checked against measured boards, not datasheet folklore.** The first external body design had the Pi hole pattern, switch cut-out, and ToF mounts wrong; we re-measured every component before modeling. The ToF windows also flipped from vertical to horizontal once we checked the actual board's long axis.
+5. **Controls placement followed usage.** The start button began on the left wall 1.5 mm from the Pi — reachable, but only just. It ended up on the rear wall next to the rear ToF, 20+ mm clear of everything, where a start press can't disturb the wiring.
 
+## Generation 1 (retired — `v1/`)
 
+The first vehicle was a fully 3D-printed 140 × 88 × 56 mm design (76 mm wheelbase, ⌀30.4 mm LEGO wheels) built around two objectives: **compactness and component protection**. Everything lived inside the shell to protect the electronics, with a slip-fit body-to-chassis joint and ventilation cut-outs.
 
+<p align="center"><img width="500" alt="v1 isometric view" src="v1/Isometric.png" /></p>
+
+Its mechanical highlights, which still inform the current vehicle:
+
+- **Ackermann steering geometry** — the inner wheel turns at a greater angle than the outer during cornering, reducing slip; actuated by the servo horn directly on the steering linkage. We validated the geometry in simulation before printing:
+
+  <img width="600" alt="v1 steering simulation" src="https://github.com/user-attachments/assets/3ec526db-7bef-41e5-b09d-fc89b952c792" />
+
+- **Single-motor rear drive through a custom gearbox** (bevel gears, 1:1 ratio) — the ratio preserved the motor's rated speed, prioritizing lap time over torque, because the vehicle was light enough that torque was never the constraint. A single-channel wheel encoder was wired for odometry.
+- **Iterative chassis lightening** — material removed for steering clearance, thinner base with reinforcement extrusions at load points:
+
+  <div align="center">
+  <img width="320" alt="v1 first chassis iteration" src="https://github.com/user-attachments/assets/10d61965-bf15-4e79-865b-48f4ca92aa18" /> ➡️
+  <img width="320" alt="v1 final chassis iteration" src="https://github.com/user-attachments/assets/8fa4f160-aa62-4e27-ad81-3dd9c0513495" />
+  </div>
+
+**Why we retired it:** the very compactness we optimized for became the bottleneck the moment electrical bring-up started. Diagnosing a single suspect jumper meant disassembling the stacked body, and with the debugging phase producing faults weekly (dead motor-driver channel, counterfeit IMU, sensor repositioning — see the [root README §4](../README.md#4-engineering-decisions-and-lessons)), teardown cost dominated. The 208 mm generation-2 platform trades footprint for a longer wheelbase (steadier tracking), larger wheels, and above all **access**: nothing on the current robot requires removing more than the lid to reach.

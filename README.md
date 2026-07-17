@@ -44,32 +44,32 @@ A vehicle must complete **three autonomous laps** on a track whose geometry is r
 
 ## The vehicle
 
-Six views of the vehicle are in [`v-photos/`](v-photos). Key figures:
+Six views of the vehicle are in [`v-photos/`](v-photos). Key figures (current, generation-2 chassis — measured from the CAD assembly):
 
 | Property | Value |
 |---|---|
-| Footprint | 140 mm × 88 mm (rules allow 300 × 200) |
-| Wheelbase | 76 mm |
-| Weight | ≈ 219 g |
-| Drive | Single 12 V N20-class gearmotor, rear differential |
-| Steering | Ackermann geometry, SG90 servo, ±35° measured throw |
-| Wheels | LEGO 55981C05, ⌀30.4 mm |
-| Top speed | ≈ 216 mm/s (136 rpm at the wheel × 95.5 mm circumference) |
+| Footprint over wheels | ≈ 208 mm × 148 mm (rules allow 300 × 200) |
+| Height | ≈ 100 mm (equal to the track wall height; limit 300) |
+| Wheelbase / track | ≈ 152 mm / ≈ 120 mm |
+| Wheels | ⌀ ≈ 55 mm rubber, 4-spoke |
+| Drive | Single 12 V DC gearmotor, rear axle |
+| Steering | Front-wheel, SG90 servo, ±35° measured linkage throw |
 | Compute | Raspberry Pi 3B+ |
+| Power | 3S pack (3 × 18650) + XL4015 buck for the 5 V rail |
 
-We deliberately built **small and slow-ish**: at cruise (80% throttle, ≈173 mm/s) a 3-lap run takes ≈2:24 against the 3:00 limit. The compact footprint buys margin everywhere else — wider effective corridors on the 600 mm narrow track, easier pillar avoidance, and a parking slot that is comfortably 1.5× our length.
+This is our **second chassis generation** (see §1 and [`models/README.md`](models/README.md) for the full story). One honest caveat we are actively closing: the simulator's kinematic constants in [`src/core/config.py`](src/core/config.py) were measured from the first-generation CAD (140 mm, ⌀30.4 mm wheels) and are being re-measured for this chassis — which is exactly why every unconfirmed physical constant in [`src/robot/hardware_config.py`](src/robot/hardware_config.py) carries an explicit `VERIFY` marker until it has been bench-measured.
 
 ## 1. Mobility and mechanical design
 
-- **Ackermann steering.** The front wheels are steered through an Ackermann linkage so the inner wheel turns tighter than the outer one, minimizing scrub in the 90° corners. The linkage is driven directly by the servo horn; we measured the real assembled throw at ±35° and use that as the software steering limit ([`src/core/config.py`](src/core/config.py)).
-- **Single-motor rear drive with differential**, as required by the rules. Torque/speed trade-off: with ⌀30.4 mm wheels and the N20 gearmotor, top speed is ≈216 mm/s — slow enough that we never needed encoder-based speed control for lap timing, fast enough for a ~2:24 three-lap run.
-- **Two chassis generations.** Our first fully 3D-printed design ([`models/v1/`](models/v1), documented in [`models/README.md`](models/README.md)) packed everything into a 140 mm shell for protection — and taught us a hard lesson: it was so cramped that every wiring fault meant a full teardown. During electrical bring-up (see §4) that cost us days. The current design ([`models/cad-source/`](models/cad-source) STEP sources, [`models/print/`](models/print) print-ready STLs) is a **tub + lid** with a slip-fit joint: the lid lifts off tool-free, exposing the entire loom and every board for probing, and ventilation cut-outs keep the Pi cool.
+- **Servo-driven front steering.** The front wheels steer through a king-pin linkage driven by the SG90's horn; we measured the real assembled throw at ±35° and use that as the software steering limit. Our first-generation chassis used explicit Ackermann geometry (inner wheel turns tighter — see [`models/README.md`](models/README.md)), and that design reasoning carried into the current steering setup.
+- **Single-motor rear drive**, as required by the rules — one 12 V DC gearmotor on the rear axle, with a single-channel wheel encoder wired for odometry (counts-per-rev calibration pending, tracked as `VERIFY` in `hardware_config.py`).
+- **Two chassis generations.** Our first fully 3D-printed design ([`models/v1/`](models/v1)) packed everything into a 140 mm shell for protection — and taught us a hard lesson: it was so cramped that every wiring fault meant a full teardown, which cost us days during electrical bring-up (§4). Generation 2 is a longer 208 mm chassis plate carrying a custom-designed **tub + lid body** ([`models/cad-source/`](models/cad-source) STEP sources, [`models/print/`](models/print) print-ready STLs): the screw-on lid comes off to expose the entire loom and every board for probing, the battery pack rides in a 24 mm service bay *under* the tub on metal standoffs, and the walls carry apertures for all four ToF sensors, the camera nose, the power switch, and the start button. The full iteration history (10 body revisions, with what each one fixed) is in [`models/README.md`](models/README.md).
 
 ## 2. Power and sensor architecture
 
 Wiring diagram: [`schemes/circuit_image.png`](schemes/circuit_image.png) (editable SVG alongside; full schematic PDF in [`docs/schematics/`](docs/schematics)).
 
-**Power.** A 12 V rechargeable pack feeds the drive motor directly through the H-bridge; an XL4015 buck converter steps down to 5 V for the Pi, servo, and sensors, isolating logic from motor sag.
+**Power.** An 11.1 V 3S pack (3 × 18650 cells in a holder mounted in the under-tub bay) feeds the drive motor directly through the H-bridge; an XL4015 buck converter steps down to 5 V for the Pi, servo, and sensors, isolating logic from motor sag.
 
 **Sensors and why we chose them:**
 
