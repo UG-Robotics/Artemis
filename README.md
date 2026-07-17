@@ -57,7 +57,7 @@ Six views of the vehicle are in [`v-photos/`](v-photos). Key figures (current, g
 | Compute | Raspberry Pi 3B+ |
 | Power | 3S pack (3 × 18650) + XL4015 buck for the 5 V rail |
 
-This is our **second chassis generation** (see §1 and [`models/README.md`](models/README.md) for the full story). One honest caveat we are actively closing: the simulator's kinematic constants in [`src/core/config.py`](src/core/config.py) were measured from the first-generation CAD (140 mm, ⌀30.4 mm wheels) and are being re-measured for this chassis — which is exactly why every unconfirmed physical constant in [`src/robot/hardware_config.py`](src/robot/hardware_config.py) carries an explicit `VERIFY` marker until it has been bench-measured.
+This is our **second chassis generation** (see §1 and [`models/README.md`](models/README.md) for the full story). The simulator's kinematic constants in [`src/core/config.py`](src/core/config.py) now model this chassis (208 mm, 152 mm wheelbase, ⌀55 mm wheels, 300 RPM rated drive), and the open-challenge controller was re-tuned and re-validated in simulation against the new geometry. Constants that can only be confirmed on the physical robot — such as the measured wheel RPM under load — still carry an explicit `VERIFY` marker in [`src/robot/hardware_config.py`](src/robot/hardware_config.py) until they have been bench-measured.
 
 ## 1. Mobility and mechanical design
 

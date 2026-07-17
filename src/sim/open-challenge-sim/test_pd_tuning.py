@@ -99,6 +99,12 @@ def run_pd_stability_test(track_width=1000, heading_error=5, duration=3.0,
         if controller._corner_approach_ticks > 0:
             break
 
+        # Gen-2 speeds cover the whole straight inside the test window: once the
+        # corner line bumps the goal heading the robot is CORRECTLY turning, so
+        # stop scoring convergence against the straight's heading.
+        if controller.target_heading != 0:
+            break
+
         h_err = _angle_diff(0, robot.imu_heading)
         heading_errors.append(h_err)
         max_heading_err = max(max_heading_err, abs(h_err))
@@ -249,6 +255,12 @@ def run_offset_stability_test(track_width=1000, heading_error=5, lateral_offset=
             break
 
         if controller._corner_approach_ticks > 0:
+            break
+
+        # Gen-2 speeds cover the whole straight inside the test window: once the
+        # corner line bumps the goal heading the robot is CORRECTLY turning, so
+        # stop scoring convergence against the straight's heading.
+        if controller.target_heading != 0:
             break
 
         h_err = _angle_diff(0, robot.imu_heading)
