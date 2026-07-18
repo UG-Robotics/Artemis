@@ -28,19 +28,19 @@ class Motor:
 
     OUTPUT_RPM = None              # VERIFY measured RPM at the wheel
     ENCODER_COUNTS_PER_REV = None  # VERIFY counts per output rev
-    # Top-speed cap. Lowered 1.0 -> 0.62 on 2026-07-18: at full range the robot
-    # reached corner walls faster than the full-lock turn could complete and
-    # crashed. This compresses the whole fraction->duty range so the real robot
-    # is slower WITHOUT touching the shared SPEED_OPEN_* fractions (the sim has no
-    # deadband and still needs those fractions to finish 3 laps in time). Raise
-    # for more speed once cornering is reliable.
-    MAX_PWM_DUTY = 0.62
+    # Top-speed cap, compresses the fraction->duty range (real-robot only; the sim
+    # has no deadband). History 2026-07-18: 1.0 crashed corners (too fast) -> 0.62
+    # fixed cornering but cruise (~49% duty) then STALLED on the straight (front
+    # ToF froze mid-corridor, imufusion run held heading 90s but stopped moving).
+    # 0.78 keeps corners controllable while lifting cruise clear of the static-
+    # friction break.
+    MAX_PWM_DUTY = 0.78
     # Deadband floor: below this PWM duty the gen-2 chassis doesn't move (it only
-    # "crawled" at 0.35 on the mat 2026-07-18). set_speed_fraction remaps the
-    # speed fraction onto [MOTOR_MIN_DUTY, MAX_PWM_DUTY] so low speeds still
-    # drive. TUNE on the mat: raise if it still stalls from rest, lower if the
-    # slowest speed is too fast to corner cleanly.
-    MOTOR_MIN_DUTY = 0.42
+    # "crawled" at 0.35, and stalled from rest around ~0.49-0.53 on the mat). The
+    # fraction remaps onto [MOTOR_MIN_DUTY, MAX_PWM_DUTY] so the slowest speed is
+    # still comfortably above the break. TUNE on the mat: raise if it still stalls,
+    # lower if the slowest speed is too fast to corner cleanly.
+    MOTOR_MIN_DUTY = 0.48
 
 
 # Steering servo.
