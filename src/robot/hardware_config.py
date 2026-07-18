@@ -121,18 +121,20 @@ class Color:
     # /boot/firmware/config.txt on 2026-07-14. See [[project-open-challenge-tof]].
     BUS_ID = 3                 # /dev/i2c-3 (the dedicated color bus)
     I2C_ADDRESS = 0x29
-    INTEGRATION_TIME_MS = 50   # VERIFY
-    GAIN = 4                   # 1 / 4 / 16 / 60
-    # Calibrated on the real mat 2026-07-18 (normalised r/g/b = R/G/B ÷ clear;
-    # nearest-centroid classify). Orange is strongly red (r 0.66), blue is
-    # blue-dominant (b 0.49), white mat sits between — clean on the r-b axis
-    # (orange +0.35, white +0.11, blue -0.09). Re-capture if the venue lighting
-    # or mounting height changes.
-    THRESHOLDS = {
-        'orange': (0.661, 0.306, 0.313),
-        'blue':   (0.403, 0.360, 0.489),
-        'none':   (0.492, 0.355, 0.383),
-    }
+    # Fast, short integration so a line flashing under the sensor at speed still
+    # lands in a read (50ms blurred the line into the white mat -> missed);
+    # higher gain keeps the light budget at 10ms.
+    INTEGRATION_TIME_MS = 10    # 2.4ms min .. 700ms
+    GAIN = 16                   # 1 / 4 / 16 / 60
+    # Classify on the normalised warm axis (r-b) = (R-B)/clear — brightness- and
+    # gain-independent. Calibrated on the mat 2026-07-18: orange r-b +0.35,
+    # white +0.11, blue -0.09. Thresholds sit PERMISSIVELY off the white value
+    # (so a partial/blurred line still reads as a line) while excluding white:
+    #   r-b > ORANGE_RB_MIN -> orange;  r-b < BLUE_RB_MAX -> blue;  else none.
+    ORANGE_RB_MIN = 0.18       # white 0.11 < this < orange 0.35
+    BLUE_RB_MAX = 0.05         # blue -0.09 < this < white 0.11
+    MIN_CLEAR = 12             # ignore near-dark reads (normalised noise floor)
+    THRESHOLDS = None          # legacy nearest-centroid refs (unused now)
 
 
 # Forward camera — OV5647. Obstacle challenge only.

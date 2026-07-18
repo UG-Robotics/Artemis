@@ -272,13 +272,16 @@ def run_color_imu(track_width: float, wait_button: bool, log: bool = True) -> No
     blue=left), ToF confirms the corner, the IMU executes a clean 90°. No camera
     (that's obstacle-only). Direction auto-detects from the first line crossed."""
     from core.color_imu_controller import ColorImuController, CIState
+    from robot.color_worker import ColorWorker
 
-    hw = RealHardware(use_camera=False, use_imu=True, use_color=True)
-    print(f"ColorSensor: {'live' if hw.color is not None else 'UNAVAILABLE'}")
+    hw = RealHardware(use_camera=False, use_imu=True, use_color=False)
+    color = ColorWorker()   # owns the sensor; reads fast + latches brief crossings
+    print(f"ColorWorker: {'live' if color.available else 'UNAVAILABLE'}")
     world = OpenChallengeWorld(track_width)
     controller = ColorImuController(track_width=track_width)
 
     if not arm_start(wait_button):
+        color.close()
         hw.close()
         return
     print("GO")
@@ -289,7 +292,8 @@ def run_color_imu(track_width: float, wait_button: bool, log: bool = True) -> No
     try:
         while controller.state != CIState.STOPPED:
             tick_start = time.monotonic()
-            sensors = hw.read_sensors()   # imu_heading + color_detected + ToFs
+            sensors = hw.read_sensors()   # imu_heading + ToFs
+            sensors.color_detected = color.color   # latched line colour
             controller.update(sensors, hw, world, dt)
             if logger:
                 logger.log_sensors(sensors, hw.servo_angle, hw.motor_speed,
@@ -302,6 +306,7 @@ def run_color_imu(track_width: float, wait_button: bool, log: bool = True) -> No
         pass
     finally:
         hw.stop()
+        color.close()
         hw.close()
         if logger:
             logger.close({"final_state": controller.get_state_name(),

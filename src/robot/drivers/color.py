@@ -76,26 +76,23 @@ class ColorSensor:
         return r / c, g / c, b / c
 
     def detect(self) -> "str | None":
-        """Classify the floor as 'orange', 'blue', or None.
+        """Classify the floor as 'orange', 'blue', or None on the warm axis.
 
-        Uses nearest-centroid over the calibrated normalised references in
-        config.THRESHOLDS (dict: {'orange': (r,g,b), 'blue': (r,g,b),
-        'none': (r,g,b)}). Until those are calibrated on the mat, this raises so
-        callers don't act on a guess.
-        """
-        refs = self.config.THRESHOLDS
-        if not refs:
-            raise NotImplementedError(
-                "calibrate config.Color.THRESHOLDS on the real mat first "
-                "(capture normalised r/g/b for orange, blue, none)"
-            )
-        r, g, b = self.normalized()
-        best, best_d = None, None
-        for name, (rr, gg, bb) in refs.items():
-            d = (rr - r) ** 2 + (gg - g) ** 2 + (bb - b) ** 2
-            if best_d is None or d < best_d:
-                best, best_d = name, d
-        return None if best == "none" else best
+        rb = (R - B) / clear — brightness/gain-independent. Orange is warm
+        (rb high), blue is cool (rb low), the white mat sits between. The
+        thresholds sit permissively off the white value so a partial or motion-
+        blurred line still reads as a line, while white stays None. One raw read
+        (fast). Near-dark frames (clear < MIN_CLEAR) return None (noise floor)."""
+        cfg = self.config
+        c, r, g, b = self.raw()
+        if c < getattr(cfg, "MIN_CLEAR", 12):
+            return None
+        rb = (r - b) / c
+        if rb > cfg.ORANGE_RB_MIN:
+            return 'orange'
+        if rb < cfg.BLUE_RB_MAX:
+            return 'blue'
+        return None
 
     def close(self) -> None:
         if self._bus is not None:
