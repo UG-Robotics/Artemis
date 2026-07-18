@@ -6,7 +6,7 @@ Companion to the wiring diagram in [`../schemes/`](../schemes) (full schematic P
 
 ```
 2S LiPo pack (7.4 V nominal, 5000 mAh / 37 Wh, built-in dual-protection board)
- ├── TB6612FNG VM ──► drive motor (12 V-rated N20-class gearmotor)
+ ├── TB6612FNG VM ──► drive motor (12 V-rated JGA25-370 gearmotor)
  └── XL4015 buck ──► 5 V rail
         ├── Raspberry Pi 3B+ (+ OV5647 camera via CSI)
         ├── SG90 steering servo
@@ -32,7 +32,7 @@ Two deliberate separations:
 | TCS34727 | 3V3 | <1 mA | — | Own software I2C bus (see §2) |
 | TB6612 logic | 3V3 | ~2 mA | — | |
 | **5 V rail total** | | **~0.5–1.1 A** | **~2 A** | XL4015 is rated 5 A — >2× headroom at worst case |
-| Drive motor | pack | load-dependent | ≤ TB6612 limit | TB6612 channel: 1.2 A continuous / 3.2 A peak — comfortably above an N20-class stall |
+| Drive motor | pack | load-dependent | ≤ TB6612 limit | TB6612 channel: 1.2 A continuous / 3.2 A peak; the JGA25-370 is driven at ~35% throttle in normal running, and a sustained stall is a fault state the controller never commands |
 
 ### Runtime power monitoring
 

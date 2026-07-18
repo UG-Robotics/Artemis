@@ -52,7 +52,7 @@ Six views of the vehicle are in [`v-photos/`](v-photos). Key figures (current, g
 | Height | ≈ 100 mm (equal to the track wall height; limit 300) |
 | Wheelbase / track | ≈ 152 mm / ≈ 120 mm |
 | Wheels | ⌀ ≈ 55 mm rubber, 4-spoke |
-| Drive | Single 12 V DC gearmotor, rear axle |
+| Drive | Single JGA25-370 12 V DC gearmotor, rear axle |
 | Steering | Front-wheel, SG90 servo, ±35° measured linkage throw |
 | Compute | Raspberry Pi 3B+ |
 | Power | 7.4 V 2S LiPo, 5000 mAh (built-in protection board) + XL4015 buck for the 5 V rail |

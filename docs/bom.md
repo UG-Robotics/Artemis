@@ -8,7 +8,7 @@ Prices are estimates in Ghanaian cedis (GH₵) at time of purchase; sourcing lin
 |---|---:|---:|---:|---|
 | [Raspberry Pi 3B+](https://www.aliexpress.com/wholesale?SearchText=raspberry+pi+3b%2B) | 1 | GH₵1,200.00 | GH₵1,200.00 | Main computer — control loop, vision, logging |
 | [OV5647 camera, 160° wide-angle](https://www.aliexpress.com/wholesale?SearchText=OV5647+raspberry+pi+camera+160+degree) | 1 | GH₵108.00 | GH₵108.00 | Pillar detection (obstacle challenge), heading fusion |
-| [N20 DC gearmotor, 12 V](https://www.aliexpress.com/wholesale?SearchText=n20+dc+gear+motor+12v) | 1 | GH₵108.00 | GH₵108.00 | Rear drive |
+| [JGA25-370 DC gearmotor, 12 V](https://www.aliexpress.com/wholesale?SearchText=jga25-370+12v+gear+motor) | 1 | GH₵108.00 | GH₵108.00 | Rear drive |
 | [TB6612FNG motor driver](https://www.aliexpress.com/wholesale?SearchText=TB6612FNG+motor+driver) | 1 | GH₵72.00 | GH₵72.00 | H-bridge for the drive motor |
 | [VL53L1X ToF sensor](https://www.aliexpress.com/w/wholesale-vl53l1x-tof-sensor.html) | 4 | GH₵48.00 | GH₵192.00 | Wall ranging (front/left/right/rear) |
 | [XL4015 step-down converter](https://www.aliexpress.com/wholesale?SearchText=XL4015+step+down) | 1 | GH₵36.00 | GH₵36.00 | 5 V rail regulation |

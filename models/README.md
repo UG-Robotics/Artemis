@@ -5,6 +5,10 @@ CAD for the Artemis vehicle, in two generations:
 ```
 models/
 ├── cad-source/   # Current (gen-2) design — editable STEP sources
+│   ├── New assembly test on new.step   # Full rolling-chassis assembly (frame,
+│   │                                   #  wheels, steering, JGA25-370, SG90, tub)
+│   ├── New assembly test on new.f3d    # Fusion 360 source of the assembly
+│   ├── full_assembly_with_lid.step     # Assembly + lid placed (render-ready)
 │   ├── Improved frame.step   # Chassis base plate (71 × 171 mm)
 │   ├── body.step             # Tub + lid combined, in assembled position
 │   ├── body_tub.step / body_lid.step / legs.step
