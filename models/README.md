@@ -19,6 +19,14 @@ models/
 
 ## Current design (generation 2, July 2026)
 
+<p align="center"><img width="640" alt="Gen-2 assembly, front isometric render" src="renders/gen2-front-iso.png" /></p>
+<div align="center">
+<img width="320" alt="Gen-2 top-front render" src="renders/gen2-top-front.png" />
+<img width="320" alt="Gen-2 rear underside render" src="renders/gen2-rear-underside.png" />
+</div>
+
+*Renders of [`cad-source/full_assembly_with_lid.step`](cad-source/full_assembly_with_lid.step) in Fusion 360 — lid on, camera nose and ToF/button apertures visible.*
+
 The vehicle is built on a **208 mm chassis** (measured over the wheels: ≈208 L × 148 W mm, ≈100 mm tall — exactly the track wall height, well inside the 300 × 200 × 300 limit). The rolling chassis — frame plate, steering, motor, and ⌀≈55 mm wheels, wheelbase ≈152 mm — was built by our mechanical engineer; the **body is our own design**, modeled programmatically in Python (gmsh/OpenCASCADE CSG scripts) so every revision is reproducible from code rather than mouse-clicks.
 
 ### Body architecture: tub + lid
