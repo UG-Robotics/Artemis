@@ -36,3 +36,6 @@ external/
 
 # Full-res screen-recording originals stay local; compressed .mp4s are tracked
 video/*.mov
+
+# Journal drafts stay local until final (add the final PDF deliberately)
+ARTEMIS DOC*.pdf
