@@ -41,6 +41,13 @@
                   font-family:ui-monospace,Menlo,Consolas,monospace; margin-top:2px; }
   .sensors .val .u { font-size:11px; color:var(--dim); margin-left:1px; }
   .sensors .val.stale { color:var(--dim); }
+  .colorbar { flex:0 0 auto; display:flex; align-items:center; gap:10px; margin-top:8px;
+    font-size:14px; }
+  .colorbar .swatch { width:26px; height:26px; border-radius:6px; border:1px solid #0004;
+    background:#111; }
+  .colorbar .lab { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; }
+  .colorbar .cval { font-weight:600; text-transform:uppercase; }
+  .colorbar .cnorm { color:var(--dim); font-variant-numeric:tabular-nums; margin-left:auto; }
 </style>
 </head>
 <body>
@@ -77,6 +84,12 @@
     <div class="cell"><span class="lab">Heading</span><span class="val" id="s-imu">—</span></div>
     <div class="cell"><span class="lab">Right</span><span class="val" id="s-right">—</span></div>
     <div class="cell"><span class="lab">Rear</span><span class="val" id="s-rear">—</span></div>
+  </div>
+  <div class="colorbar">
+    <span class="swatch" id="c-swatch"></span>
+    <span class="lab">Colour</span>
+    <span class="cval" id="c-detected">—</span>
+    <span class="cnorm" id="c-norm">—</span>
   </div>
 </div>
 <script>
@@ -173,6 +186,15 @@ async function pollSensors() {
     cell('s-front', s.tof.front, 'mm'); cell('s-rear', s.tof.rear, 'mm');
     cell('s-left', s.tof.left, 'mm');   cell('s-right', s.tof.right, 'mm');
     cell('s-imu', s.imu_heading, '°');
+    const c = s.color;
+    if (c) {
+      const sw = document.getElementById('c-swatch');
+      sw.style.background = 'rgb(' + Math.min(255, c.nr*420|0) + ',' +
+        Math.min(255, c.ng*420|0) + ',' + Math.min(255, c.nb*420|0) + ')';
+      document.getElementById('c-detected').textContent = c.detected || '—';
+      document.getElementById('c-norm').textContent =
+        'r ' + c.nr + '  g ' + c.ng + '  b ' + c.nb + '   C ' + c.c;
+    }
   } catch (e) {}
 }
 setInterval(pollSensors, 250);

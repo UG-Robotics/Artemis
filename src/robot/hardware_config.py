@@ -123,7 +123,16 @@ class Color:
     I2C_ADDRESS = 0x29
     INTEGRATION_TIME_MS = 50   # VERIFY
     GAIN = 4                   # 1 / 4 / 16 / 60
-    THRESHOLDS = None          # VERIFY: calibrate orange/blue on the real mat
+    # Calibrated on the real mat 2026-07-18 (normalised r/g/b = R/G/B ÷ clear;
+    # nearest-centroid classify). Orange is strongly red (r 0.66), blue is
+    # blue-dominant (b 0.49), white mat sits between — clean on the r-b axis
+    # (orange +0.35, white +0.11, blue -0.09). Re-capture if the venue lighting
+    # or mounting height changes.
+    THRESHOLDS = {
+        'orange': (0.661, 0.306, 0.313),
+        'blue':   (0.403, 0.360, 0.489),
+        'none':   (0.492, 0.355, 0.383),
+    }
 
 
 # Forward camera — OV5647. Obstacle challenge only.
