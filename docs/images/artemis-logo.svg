@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs><clipPath id="ring"><circle cx="512" cy="512" r="470"/></clipPath></defs>
+  <circle cx="512" cy="512" r="470" fill="#FFFFFF"/>
+  <circle cx="512" cy="512" r="470" fill="none" stroke="#1F3864" stroke-width="26"/>
+  <circle cx="512" cy="512" r="404" fill="none" stroke="#1F3864" stroke-width="6"/>
+  <g clip-path="url(#ring)">
+    <circle cx="512" cy="450" r="240" fill="#1F3864"/>
+    <circle cx="597" cy="392" r="226" fill="#FFFFFF"/>
+  </g>
+  <g stroke="#1F3864" stroke-width="32" stroke-linecap="round" fill="#1F3864">
+    <line x1="282" y1="704" x2="710" y2="276"/>
+    <path d="M 710 276 L 592 300 L 686 394 Z" stroke="none"/>
+  </g>
+  <g stroke="#1F3864" stroke-width="20" stroke-linecap="round">
+    <line x1="261" y1="683" x2="303" y2="725"/>
+    <line x1="300" y1="644" x2="342" y2="686"/>
+  </g>
+  <text x="512" y="812" text-anchor="middle" font-family="Avenir Next, Helvetica, sans-serif" font-size="86" font-weight="700" letter-spacing="14" fill="#1F3864">ARTEMIS</text>
+  <text x="512" y="880" text-anchor="middle" font-family="Avenir Next, Helvetica, sans-serif" font-size="40" font-weight="500" letter-spacing="10" fill="#1F3864">UGHANA ROBOTICS</text>
+</svg>
