@@ -171,6 +171,11 @@ KD_HEADING = 0.5           # damping on heading error
 KP_TRIM = 0.02             # centring: steering deg per mm of (tof_r - tof_l)
 TURN_HEADING_GATE = 20     # deg — above this we're mid-corner: drop trim, slow
 CORNER_DEBOUNCE_TICKS = 20 # ticks to ignore further corner lines after a turn
+CORNER_REARM_GATE = 12     # deg — a new corner can't fire until the heading is within
+                           # this of the CURRENT target (i.e. the prior 90° turn has
+                           # actually completed). Hard cap so a re-seen line mid-turn
+                           # can never stack a second +90° (2026-07-18: an imu run
+                           # swept ~173° when a re-detected orange line double-fired).
 
 # PD control parameters (from team design doc)
 KP_WALL = 0.05
@@ -289,6 +294,14 @@ TURN_DEBOUNCE_TICKS = 90       # ticks (~3s at 30Hz) to ignore new corners after
                                # corner mouth just exited (phantom re-trigger seen
                                # 1.7s after exit with the old 1.5s debounce)
 TURNS_TO_FINISH = 12           # 4 corners × 3 laps — run ends after this many turns
+# Stuck / collision guard (WallFollowController). A front ToF pinned tiny means the
+# robot is jammed nose-first, NOT at a corner — without this it grinds the wall and
+# the corner logic counts phantom turns (2026-07-18 fusion run: front pinned ~5mm for
+# 20s, turn count ran to 61). On a jam it reverses briefly and retries, up to a cap.
+STUCK_FRONT_MM = 90            # mm — front below this = possible wall contact
+STUCK_TICKS = 18              # consecutive stuck ticks (~0.6s) before it's a jam
+STUCK_REVERSE_TICKS = 18      # ticks to reverse away from the wall on a jam
+MAX_STUCK_RECOVERIES = 3      # jams before giving up and stopping the run
 FINISH_TOF_TOLERANCE = 200     # mm — front/rear match to the start signature = stop
 
 # Traffic-sign threading (obstacle). Red -> keep RIGHT (sign on our left),

@@ -28,7 +28,19 @@ class Motor:
 
     OUTPUT_RPM = None              # VERIFY measured RPM at the wheel
     ENCODER_COUNTS_PER_REV = None  # VERIFY counts per output rev
-    MAX_PWM_DUTY = 1.0            # VERIFY: lower to cap top speed if needed
+    # Top-speed cap. Lowered 1.0 -> 0.62 on 2026-07-18: at full range the robot
+    # reached corner walls faster than the full-lock turn could complete and
+    # crashed. This compresses the whole fraction->duty range so the real robot
+    # is slower WITHOUT touching the shared SPEED_OPEN_* fractions (the sim has no
+    # deadband and still needs those fractions to finish 3 laps in time). Raise
+    # for more speed once cornering is reliable.
+    MAX_PWM_DUTY = 0.62
+    # Deadband floor: below this PWM duty the gen-2 chassis doesn't move (it only
+    # "crawled" at 0.35 on the mat 2026-07-18). set_speed_fraction remaps the
+    # speed fraction onto [MOTOR_MIN_DUTY, MAX_PWM_DUTY] so low speeds still
+    # drive. TUNE on the mat: raise if it still stalls from rest, lower if the
+    # slowest speed is too fast to corner cleanly.
+    MOTOR_MIN_DUTY = 0.42
 
 
 # Steering servo.

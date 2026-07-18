@@ -42,7 +42,11 @@ from core.config import (
     MAX_SPEED,
     ROUND_TIME,
     SIDE_WALL_VALID,
+    MAX_STUCK_RECOVERIES,
     SIDE_SUM_REALIGNED,
+    STUCK_FRONT_MM,
+    STUCK_REVERSE_TICKS,
+    STUCK_TICKS,
     SILENT_CORNER_ARC,
     SILENT_CORNER_DECAY,
     SPEED_OPEN_CORNER,
@@ -85,6 +89,9 @@ class WallFollowController:
         self._turn_clear_ticks = 0   # consecutive "realigned" ticks inside a turn
         self._corner_cooldown = 0    # ticks left before a new corner may trigger
         self._turn_arc = 0.0         # dead-reckoned degrees swept in this turn
+        self._stuck_ticks = 0        # consecutive ticks with the front pinned tiny
+        self._stuck_count = 0        # jams recovered so far this run
+        self._recover_ticks = 0      # ticks left in a reverse-recovery
         self._drive_arc = 0.0        # leaky steering integral while DRIVING
         self._hold_dist = None       # single-wall mode: distance being held
         self._front_close_ticks = 0  # consecutive ticks the front has been < trigger
@@ -117,6 +124,9 @@ class WallFollowController:
             self.state = WFState.STOPPED
             return
 
+        if self._handle_stuck(sensors, robot):
+            return   # jammed / recovering — skip the normal state machine this tick
+
         if self.state == WFState.STARTING:
             self._handle_starting(sensors, robot)
         elif self.state == WFState.DRIVING:
@@ -127,6 +137,47 @@ class WallFollowController:
             self._handle_finishing(sensors, robot)
         elif self.state == WFState.STOPPED:
             robot.stop()
+
+    # -- collision guard ---------------------------------------------------
+
+    def _handle_stuck(self, sensors, robot) -> bool:
+        """Detect a nose-first jam and reverse out of it. Returns True while the
+        guard owns the tick (mid-recovery, or just detected a jam).
+
+        A front ToF pinned below STUCK_FRONT_MM for STUCK_TICKS is the robot
+        grinding a wall, not a corner — without this it keeps reading "corner"
+        and the turn count runs away. On a jam it reverses (steering away from
+        the locked turn side) for STUCK_REVERSE_TICKS, then resumes DRIVING;
+        after MAX_STUCK_RECOVERIES it gives up and stops."""
+        if self._recover_ticks > 0:
+            self._recover_ticks -= 1
+            robot.set_speed(-SPEED_OPEN_CORNER)
+            robot.set_steering(-self.turn_dir * TURN_STEER if self.turn_dir else 0)
+            if self._recover_ticks == 0:
+                self._prev_center_err = 0.0
+                self._heading.reset()
+                self._corner_cooldown = TURN_DEBOUNCE_TICKS  # don't insta-recount
+                if self.state not in (WFState.FINISHING, WFState.STOPPED):
+                    self.state = WFState.DRIVING
+            return True
+
+        if sensors.tof_front < STUCK_FRONT_MM:
+            self._stuck_ticks += 1
+        else:
+            self._stuck_ticks = 0
+
+        if self._stuck_ticks >= STUCK_TICKS:
+            self._stuck_ticks = 0
+            self._stuck_count += 1
+            if self._stuck_count > MAX_STUCK_RECOVERIES:
+                robot.stop()
+                self.state = WFState.STOPPED
+                return True
+            self._recover_ticks = STUCK_REVERSE_TICKS
+            robot.set_speed(-SPEED_OPEN_CORNER)
+            robot.set_steering(-self.turn_dir * TURN_STEER if self.turn_dir else 0)
+            return True
+        return False
 
     # -- states ------------------------------------------------------------
 

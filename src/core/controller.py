@@ -219,11 +219,19 @@ class Controller:
         self.state = State.DRIVING
 
     def _maybe_take_corner(self, sensors):
-        """A corner line bumps the heading setpoint by 90°, debounced."""
+        """A corner line bumps the heading setpoint by 90° — but only once the
+        PREVIOUS turn has completed (heading within CORNER_REARM_GATE of the
+        current target). A line seen mid-turn is a re-detection of the corner we
+        are already turning at, so it's consumed and discarded, never stacked.
+        This hard-caps a single corner at 90° even if the detector fires twice —
+        the failure mode where an imu run swept ~173° (2026-07-18)."""
         if self._corner_cooldown > 0:
             self._corner_cooldown -= 1
-        if self._corner_line_detected and self._corner_cooldown == 0:
-            self._corner_line_detected = False
+        if not self._corner_line_detected:
+            return
+        self._corner_line_detected = False   # consume the trigger either way
+        aligned = abs(_angle_diff(self.target_heading, sensors.imu_heading)) < CORNER_REARM_GATE
+        if aligned and self._corner_cooldown == 0:
             turn_sign = 1 if self.driving_direction == 1 else -1
             self.target_heading = (self.target_heading + turn_sign * 90) % 360
             self.turns += 1
@@ -285,17 +293,21 @@ class Controller:
         capped heading offset, plus wall repulsion; back to DRIVING once passed."""
         self.avoidance_timer += 1
 
-        # corner line takes priority: bump the heading setpoint and hand back
+        # corner line takes priority: bump the heading setpoint and hand back —
+        # but only when the previous turn is complete (same 90° hard-cap gate as
+        # _maybe_take_corner), else consume the stale trigger and keep dodging.
         if self._corner_line_detected:
             self._corner_line_detected = False
-            turn_sign = 1 if self.driving_direction == 1 else -1
-            self.target_heading = (self.target_heading + turn_sign * 90) % 360
-            self.turns += 1
-            self.prev_heading_err = _angle_diff(self.target_heading, sensors.imu_heading)
-            self._corner_cooldown = CORNER_DEBOUNCE_TICKS
-            self.avoiding_pillar = None
-            self.state = State.DRIVING
-            return
+            aligned = abs(_angle_diff(self.target_heading, sensors.imu_heading)) < CORNER_REARM_GATE
+            if aligned:
+                turn_sign = 1 if self.driving_direction == 1 else -1
+                self.target_heading = (self.target_heading + turn_sign * 90) % 360
+                self.turns += 1
+                self.prev_heading_err = _angle_diff(self.target_heading, sensors.imu_heading)
+                self._corner_cooldown = CORNER_DEBOUNCE_TICKS
+                self.avoiding_pillar = None
+                self.state = State.DRIVING
+                return
 
         # re-find the tracked sign (by identity); if gone, take the next one ahead
         cur = None

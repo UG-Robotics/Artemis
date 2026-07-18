@@ -52,11 +52,22 @@ class MotorDriver:
         self._edges += self._direction
 
     def set_speed_fraction(self, fraction: float) -> None:
-        """Drive at `fraction` of full speed; negative reverses."""
+        """Drive at `fraction` of full speed; negative reverses.
+
+        Deadband compensation: the gen-2 gearmotor + heavier chassis won't move
+        below ~MOTOR_MIN_DUTY of PWM, so a raw 0.35 command (35% duty) only
+        crawls. We remap |fraction| in (0,1] onto [MOTOR_MIN_DUTY, MAX_PWM_DUTY]
+        so the smallest commanded speed still turns the wheels, and the fraction
+        again spans the motor's *usable* range. Exactly zero = coast (duty 0)."""
         if self._pi is None:
             raise NotImplementedError("pigpio unavailable — running off-Pi?")
-        fraction = max(-1.0, min(1.0, fraction)) * self.config.MAX_PWM_DUTY
         c = self.config
+        fraction = max(-1.0, min(1.0, fraction))
+        if abs(fraction) < 1e-3:
+            self._pi.set_PWM_dutycycle(c.PIN_PWM, 0)   # coast, keep last direction
+            return
+        lo = getattr(c, "MOTOR_MIN_DUTY", 0.0)
+        duty = lo + abs(fraction) * (c.MAX_PWM_DUTY - lo)
         if fraction >= 0:
             self._direction = 1
             self._pi.write(c.PIN_IN1, 1)
@@ -65,7 +76,7 @@ class MotorDriver:
             self._direction = -1
             self._pi.write(c.PIN_IN1, 0)
             self._pi.write(c.PIN_IN2, 1)
-        self._pi.set_PWM_dutycycle(c.PIN_PWM, round(abs(fraction) * _PWM_RANGE))
+        self._pi.set_PWM_dutycycle(c.PIN_PWM, round(duty * _PWM_RANGE))
 
     def stop(self) -> None:
         """Cut drive power (coast; both inputs low)."""
