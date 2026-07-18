@@ -131,9 +131,11 @@ class Color:
     # white +0.11, blue -0.09. Thresholds sit PERMISSIVELY off the white value
     # (so a partial/blurred line still reads as a line) while excluding white:
     #   r-b > ORANGE_RB_MIN -> orange;  r-b < BLUE_RB_MAX -> blue;  else none.
-    ORANGE_RB_MIN = 0.18       # white 0.11 < this < orange 0.35
-    BLUE_RB_MAX = 0.05         # blue -0.09 < this < white 0.11
-    MIN_CLEAR = 12             # ignore near-dark reads (normalised noise floor)
+    # Symmetric margins off white (0.10): orange over-detected too little, blue
+    # too much (mat run: 20 orange vs 175 blue reads, many off dark surfaces).
+    ORANGE_RB_MIN = 0.15       # ~0.05 warm of white -> orange (easier now)
+    BLUE_RB_MAX = 0.02         # ~0.08 cool of white -> blue (stricter now)
+    MIN_CLEAR = 30             # ignore dark reads (walls/shadow read cool = false blue)
     THRESHOLDS = None          # legacy nearest-centroid refs (unused now)
 
 

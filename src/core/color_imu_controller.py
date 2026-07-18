@@ -25,6 +25,8 @@ from enum import Enum, auto
 
 from core.config import (
     CONTROL_HZ,
+    CORNER_OPEN_SIDE,
+    CORNER_PERSIST_TICKS,
     CORNER_REARM_GATE,
     CORNER_TRIGGER_FRONT,
     FINISH_TOF_TOLERANCE,
@@ -70,6 +72,8 @@ class ColorImuController:
         self.turns = 0
         self.turn_dir = 0            # locked from the first colour: +1 right, -1 left
         self.entry_color = None      # the colour that means "corner" this run
+        self._approach_color = None  # last entry-line colour seen on this straight
+        self._front_close_ticks = 0
         self.target_heading = 0.0
         self._prev_err = 0.0
         self._corner_cooldown = 0
@@ -122,10 +126,11 @@ class ColorImuController:
         self.state = CIState.DRIVING
 
     def _driving(self, sensors, robot):
+        self._note_color(sensors)
         if self._corner_cooldown > 0:
             self._corner_cooldown -= 1
-        elif self._corner_triggered(sensors):
-            self._begin_turn()
+        elif self._corner_ahead(sensors):
+            self._begin_turn(sensors)
             return
         steer, _ = self._heading_steer(sensors, trim=True)
         robot.set_speed(SPEED_OPEN_CRUISE)
@@ -143,10 +148,11 @@ class ColorImuController:
                           else CIState.DRIVING)
 
     def _finishing(self, sensors, robot):
+        self._note_color(sensors)
         if self._corner_cooldown > 0:
             self._corner_cooldown -= 1
-        elif self._corner_triggered(sensors):
-            self._begin_turn()
+        elif self._corner_ahead(sensors):
+            self._begin_turn(sensors)
             return
         steer, _ = self._heading_steer(sensors, trim=True)
         robot.set_speed(SPEED_OPEN_CORNER)
@@ -160,33 +166,39 @@ class ColorImuController:
 
     # -- trigger / steering ------------------------------------------------
 
-    def _corner_triggered(self, sensors) -> bool:
-        """Colour reads a line, the ToF geometry confirms a real corner, and the
-        heading is aligned (previous turn complete)."""
+    def _note_color(self, sensors):
+        """Remember the entry-line colour seen anywhere on this straight — the
+        WRO entry line is crossed BEFORE the corner (front wall still far), so we
+        latch it and use it when the wall actually arrives. Once the direction is
+        locked, only the entry colour is remembered (the exit colour is ignored)."""
         color = getattr(sensors, "color_detected", None)
-        if color not in ('orange', 'blue'):
-            return False
-        # lock the entry colour + direction on the first corner; ignore the other
-        # (exit) colour forever after
-        if self.turn_dir == 0:
-            self._pending_dir = 1 if color == 'orange' else -1
-        elif color != self.entry_color:
-            return False
-        else:
-            self._pending_dir = self.turn_dir
-        # aligned = the previous turn has finished
-        if abs(_angle_diff(self.target_heading, sensors.imu_heading)) >= CORNER_REARM_GATE:
-            return False
-        # ToF confirmation: a side opened up, or the front wall is close
-        tof_ok = (max(sensors.tof_left, sensors.tof_right) > SIDE_WALL_VALID
-                  or sensors.tof_front < CORNER_TRIGGER_FRONT)
-        return tof_ok
+        if color in ('orange', 'blue') and (self.turn_dir == 0 or color == self.entry_color):
+            self._approach_color = color
 
-    def _begin_turn(self):
+    def _corner_ahead(self, sensors) -> bool:
+        """The corner itself: front wall closing while a side is open (the mouth),
+        debounced. This FIRES the turn; the colour (latched above) only sets which
+        way. Reliable timing — unlike the colour, the wall is right at the corner."""
+        mouth_open = max(sensors.tof_left, sensors.tof_right) > CORNER_OPEN_SIDE
+        if sensors.tof_front < CORNER_TRIGGER_FRONT and mouth_open:
+            self._front_close_ticks += 1
+        else:
+            self._front_close_ticks = 0
+        return self._front_close_ticks >= CORNER_PERSIST_TICKS
+
+    def _begin_turn(self, sensors):
         if self.turn_dir == 0:
-            self.turn_dir = self._pending_dir
+            # direction from the colour crossed on approach; geometry as fallback
+            if self._approach_color == 'orange':
+                self.turn_dir = 1
+            elif self._approach_color == 'blue':
+                self.turn_dir = -1
+            else:
+                self.turn_dir = 1 if sensors.tof_right >= sensors.tof_left else -1
             self.entry_color = 'orange' if self.turn_dir == 1 else 'blue'
         self.target_heading = (self.target_heading + self.turn_dir * 90) % 360
+        self._approach_color = None
+        self._front_close_ticks = 0
         self._exit_ticks = 0
         self.state = CIState.TURNING
 
