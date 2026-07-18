@@ -39,3 +39,4 @@ video/*.mov
 
 # Journal drafts stay local until final (add the final PDF deliberately)
 ARTEMIS DOC*.pdf
+ARTEMIS-DOC*.docx
