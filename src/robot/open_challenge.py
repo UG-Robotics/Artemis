@@ -267,6 +267,50 @@ def run_imu_fusion(track_width: float, wait_button: bool, log: bool = True) -> N
               f"turns={controller.turns} t={controller.elapsed_time:.1f}s")
 
 
+def run_color_imu(track_width: float, wait_button: bool, log: bool = True) -> None:
+    """color mode: the downward COLOUR sensor triggers turns (orange=right,
+    blue=left), ToF confirms the corner, the IMU executes a clean 90°. No camera
+    (that's obstacle-only). Direction auto-detects from the first line crossed."""
+    from core.color_imu_controller import ColorImuController, CIState
+
+    hw = RealHardware(use_camera=False, use_imu=True, use_color=True)
+    print(f"ColorSensor: {'live' if hw.color is not None else 'UNAVAILABLE'}")
+    world = OpenChallengeWorld(track_width)
+    controller = ColorImuController(track_width=track_width)
+
+    if not arm_start(wait_button):
+        hw.close()
+        return
+    print("GO")
+    hw.imu.reset_heading(0.0)
+
+    logger = _make_logger(log, "open", "color", {"track_width": track_width})
+    dt = 1.0 / CONTROL_HZ
+    try:
+        while controller.state != CIState.STOPPED:
+            tick_start = time.monotonic()
+            sensors = hw.read_sensors()   # imu_heading + color_detected + ToFs
+            controller.update(sensors, hw, world, dt)
+            if logger:
+                logger.log_sensors(sensors, hw.servo_angle, hw.motor_speed,
+                                   controller.get_state_name(), controller.turns,
+                                   sensors.color_detected, None)
+            elapsed = time.monotonic() - tick_start
+            if elapsed < dt:
+                time.sleep(dt - elapsed)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        hw.stop()
+        hw.close()
+        if logger:
+            logger.close({"final_state": controller.get_state_name(),
+                          "turns": controller.turns,
+                          "elapsed_s": round(controller.elapsed_time, 1)})
+        print(f"Done — state={controller.get_state_name()} "
+              f"turns={controller.turns} t={controller.elapsed_time:.1f}s")
+
+
 def _web_app_running() -> bool:
     """True if artemis-web answers on :8000 — it owns the camera AND the ToFs
     (constructing our own TofArray would reset them under it, and two owners
@@ -281,7 +325,7 @@ def _web_app_running() -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="WRO open-challenge run.")
-    parser.add_argument("--mode", choices=("tof", "fusion", "imu", "imufusion"),
+    parser.add_argument("--mode", choices=("tof", "fusion", "imu", "imufusion", "color"),
                         default="tof",
                         help="tof = ToF-only wall-follower (default); fusion = + camera "
                              "heading/lines; imu = gyro heading-hold Controller; "
@@ -308,6 +352,8 @@ def main() -> None:
         run_gyro(args.width, not args.now, 1 if args.direction == "cw" else -1, log=log)
     elif args.mode == "imufusion":
         run_imu_fusion(args.width, not args.now, log=log)
+    elif args.mode == "color":
+        run_color_imu(args.width, not args.now, log=log)
     else:
         run_wall_follow(args.width, not args.now,
                         use_camera=(args.mode == "fusion"), log=log)
