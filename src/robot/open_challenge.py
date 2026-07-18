@@ -213,6 +213,60 @@ def run_gyro(track_width: float, wait_button: bool, direction: int,
               f"sections={controller.sections_passed} t={controller.elapsed_time:.1f}s")
 
 
+def run_imu_fusion(track_width: float, wait_button: bool, log: bool = True) -> None:
+    """imufusion mode: IMU heading-hold + ToF-detected, gyro-executed 90° turns,
+    camera for direction. The recommended real-robot open-challenge driver."""
+    from core.imu_fusion_controller import ImuFusionController, IFState
+    from robot.camera_worker import CameraWorker
+
+    hw = RealHardware(use_camera=False, use_imu=True, use_color=False)
+    camera = CameraWorker()
+    print(f"CameraWorker: {'live' if camera.available else 'UNAVAILABLE (geometry-only direction)'}")
+    world = OpenChallengeWorld(track_width)
+    controller = ImuFusionController(track_width=track_width)
+
+    if not arm_start(wait_button):
+        hw.close()
+        return
+    print("GO")
+    hw.imu.reset_heading(0.0)   # heading reference = 0 at GO
+
+    logger = _make_logger(log, "open", "imufusion", {"track_width": track_width})
+    if logger:
+        camera.logger = logger
+
+    dt = 1.0 / CONTROL_HZ
+    try:
+        while controller.state != IFState.STOPPED:
+            tick_start = time.monotonic()
+            sensors = hw.read_sensors()          # carries the real imu_heading
+            cam_line = camera.line_color if camera.available else None
+            if cam_line is not None:
+                sensors.color_detected = cam_line
+            controller.update(sensors, hw, world, dt)
+            if logger:
+                logger.log_sensors(sensors, hw.servo_angle, hw.motor_speed,
+                                   controller.get_state_name(), controller.turns,
+                                   cam_line, camera.vision_heading if camera.available else None)
+            elapsed = time.monotonic() - tick_start
+            if elapsed < dt:
+                time.sleep(dt - elapsed)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        hw.stop()
+        if logger:
+            camera.logger = None
+        camera.close()
+        hw.close()
+        if logger:
+            logger.close({"final_state": controller.get_state_name(),
+                          "turns": controller.turns,
+                          "elapsed_s": round(controller.elapsed_time, 1)})
+        print(f"Done — state={controller.get_state_name()} "
+              f"turns={controller.turns} t={controller.elapsed_time:.1f}s")
+
+
 def _web_app_running() -> bool:
     """True if artemis-web answers on :8000 — it owns the camera AND the ToFs
     (constructing our own TofArray would reset them under it, and two owners
@@ -227,9 +281,12 @@ def _web_app_running() -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="WRO open-challenge run.")
-    parser.add_argument("--mode", choices=("tof", "fusion", "imu"), default="tof",
+    parser.add_argument("--mode", choices=("tof", "fusion", "imu", "imufusion"),
+                        default="tof",
                         help="tof = ToF-only wall-follower (default); fusion = + camera "
-                             "heading/lines; imu = gyro heading-hold Controller")
+                             "heading/lines; imu = gyro heading-hold Controller; "
+                             "imufusion = IMU-executed turns, ToF-detected, camera "
+                             "for direction (recommended)")
     parser.add_argument("--now", action="store_true",
                         help="skip the start button; 3-2-1 countdown instead")
     parser.add_argument("--width", type=float, default=TRACK_WIDTH_OPEN_WIDE,
@@ -249,6 +306,8 @@ def main() -> None:
         if not args.direction:
             parser.error("--mode imu requires --direction cw|ccw")
         run_gyro(args.width, not args.now, 1 if args.direction == "cw" else -1, log=log)
+    elif args.mode == "imufusion":
+        run_imu_fusion(args.width, not args.now, log=log)
     else:
         run_wall_follow(args.width, not args.now,
                         use_camera=(args.mode == "fusion"), log=log)
