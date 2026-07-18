@@ -27,7 +27,7 @@ models/
 
 *Renders of [`cad-source/full_assembly_with_lid.step`](cad-source/full_assembly_with_lid.step) in Fusion 360 — lid on, camera nose and ToF/button apertures visible.*
 
-The vehicle is built on a **208 mm chassis** (measured over the wheels: ≈208 L × 148 W mm, ≈100 mm tall — exactly the track wall height, well inside the 300 × 200 × 300 limit). The rolling chassis — frame plate, steering, motor, and ⌀≈55 mm wheels, wheelbase ≈152 mm — was built by our mechanical engineer; the **body is our own design**, modeled programmatically in Python (gmsh/OpenCASCADE CSG scripts) so every revision is reproducible from code rather than mouse-clicks.
+The vehicle is built on a **208 mm chassis** (measured over the wheels: ≈208 L × 148 W mm, ≈100 mm tall — exactly the track wall height, well inside the 300 × 200 × 300 limit). The rolling chassis — frame plate, steering, motor, and ⌀≈55 mm wheels, wheelbase ≈152 mm — was built by our mechanical engineer; the **body is our own design**.
 
 ### Body architecture: tub + lid
 
@@ -43,7 +43,7 @@ Printed on a Bambu Lab P1S, PLA, 0.2 mm layers. `body_tub_print.stl` and `body_l
 
 ### Iteration history (what ten body revisions taught us)
 
-The body went through ~10 scripted revisions before printing. The instructive failures:
+The body went through ~10 design revisions before printing. The instructive failures:
 
 1. **The battery drove the architecture.** The 60 mm-wide holder physically could not fit between the tub's original corner legs on a 71 mm frame plate. We evaluated three placements (under-chassis, in-tub, on-lid) against center-of-mass and access, and settled on the under-tub bay — the decision that produced the standoff design.
 2. **Integral legs doubled the print.** Printing the tub with its four 24 mm legs forced ~35 g of tree support under the raised floor and pushed the print past 5 hours. Deleting the legs (tub flat on the bed) and bridging with metal standoffs cut support material to grams — and the metal is stronger anyway.

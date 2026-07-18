@@ -30,7 +30,7 @@ artemis/
 │       ├── drivers/             # motor, servo, ToF, IMU, color, camera
 │       ├── bench/               # per-device bring-up & diagnostic scripts
 │       └── web/                 # teleop + telemetry dashboard (systemd service)
-├── docs/                        # Engineering docs: control architecture, IMU study, track layouts
+├── docs/                        # Engineering docs: power & sensors writeup, BOM, wiring PDF
 ├── schemes/                     # Wiring diagram (PNG/SVG) + docs/schematics/ PDF
 ├── models/                      # CAD: cad-source/ (STEP), print/ (STL), v1/ (retired design)
 ├── v-photos/                    # Vehicle photos (6 views)
@@ -76,7 +76,7 @@ Wiring diagram: [`schemes/circuit_image.png`](schemes/circuit_image.png) (editab
 | Sensor | Role | Placement rationale |
 |---|---|---|
 | 4× VL53L1X ToF | Wall ranging (front/left/right/rear) | Long-distance mode (≤3.6 m) covers the full 1000 mm track width with margin; left/right pair gives centring error, front detects the corner wall, rear disambiguates the start section |
-| LSM6DSOX IMU | Heading (gyro-hold mode) | Bench-measured ≈0.07°/min raw drift (study: [`docs/imu-accuracy.md`](docs/imu-accuracy.md)); startup bias calibration + zero-velocity updates |
+| LSM6DSOX IMU | Heading (gyro-hold mode) | Bench-measured ≈0.07°/min raw drift; startup bias calibration + zero-velocity updates |
 | TCS34727 color | Corner lines (orange/blue) | Downward-facing; the mat lines are the rules' ground-truth corner trigger |
 | OV5647 camera | Pillar detection + heading fusion | Forward, processed on the Pi at 640×480 |
 
@@ -112,7 +112,7 @@ stateDiagram-v2
     STOP_SECTION --> [*]
 ```
 
-Straights are a **PD controller** on the left/right ToF difference (centring), with a heading term toward the nearest cardinal direction; corners drive a bicycle-model arc whose radius is computed live from the inner-wall distance; pillar avoidance is a bounded heading-offset "weave" that snapshots the lane heading and hinges around the pillar on the rule-mandated side. Laps are counted from the mat's colored lines with distance-based dedup (8 sections = 1 lap). Full design history and the reasoning behind each revision: [`docs/control-architecture.md`](docs/control-architecture.md).
+Straights are a **PD controller** on the left/right ToF difference (centring), with a heading term toward the nearest cardinal direction; corners drive a bicycle-model arc whose radius is computed live from the inner-wall distance; pillar avoidance is a bounded heading-offset "weave" that snapshots the lane heading and hinges around the pillar on the rule-mandated side. Laps are counted from the mat's colored lines with distance-based dedup (8 sections = 1 lap).
 
 The real-robot entry point [`src/robot/open_challenge.py`](src/robot/open_challenge.py) can run **three brains** selected by flag — `--mode tof` (wall-follower, the proven baseline), `--mode fusion` (ToF + camera heading blend, 0.7/0.3), `--mode imu` (gyro heading-hold) — which lets us swap strategy at the track without code changes.
 
@@ -123,7 +123,7 @@ Every run is recorded by a **flight recorder** ([`src/robot/run_logger.py`](src/
 The decisions that shaped the robot, with the evidence behind them:
 
 - **Sim-first development.** Building the simulator before the robot let us tune the PD gains and corner geometry across 48 randomized edge-case configurations — all 48 complete three laps in the open-challenge suite. When hardware later failed (below), the sim is also what let us validate a replacement strategy in one evening.
-- **The counterfeit IMU.** Our original "MPU6050" answered WHO_AM_I with 0x98 — a non-functional counterfeit. We replaced it with a genuine LSM6DSOX, measured its drift (≈0.07°/min, [`docs/imu-accuracy.md`](docs/imu-accuracy.md)), and the IMU driver now **verifies the chip ID at startup** so a swapped or fake part fails loudly instead of navigating badly.
+- **The counterfeit IMU.** Our original "MPU6050" answered WHO_AM_I with 0x98 — a non-functional counterfeit. We replaced it with a genuine LSM6DSOX, bench-measured its drift (≈0.07°/min), and the IMU driver now **verifies the chip ID at startup** so a swapped or fake part fails loudly instead of navigating badly.
 - **A second brain instead of a blocked robot.** While the IMU was dead, the gyro heading-hold controller couldn't drive. Rather than wait on parts, we wrote `WallFollowController` — open-challenge navigation from the four ToF sensors alone (no IMU, no color, no pose), validated in the sim before deployment. It remains our most robust fallback, and the `--mode` flag makes the choice a run-time decision.
 - **Motor driver forensics.** The TB6612FNG's channel B died at chip level. GPIO-probe bench scripts ([`src/robot/bench/motor_test/`](src/robot/bench/motor_test)) isolated the fault to the chip rather than wiring or code; we moved the motor to channel A and left the diagnostic scripts in the repo.
 - **Chassis v1 → v2** (§1): compactness lost to serviceability once real debugging started.

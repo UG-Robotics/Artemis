@@ -40,3 +40,8 @@ video/*.mov
 # Journal drafts stay local until final (add the final PDF deliberately)
 ARTEMIS DOC*.pdf
 ARTEMIS-DOC*.docx
+
+# Internal engineering working notes stay local
+docs/control-architecture.md
+docs/imu-accuracy.md
+docs/TRACK_LAYOUTS.md
